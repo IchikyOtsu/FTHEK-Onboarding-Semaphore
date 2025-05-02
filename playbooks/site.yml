@@ -1,5 +1,5 @@
 ---
-- hosts : my_servers 
+- hosts : windows
   become: true 
   tasks: 
    - name: Printe OS info
