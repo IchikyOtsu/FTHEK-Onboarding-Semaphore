@@ -1,6 +1,5 @@
 ---
 - hosts : windows
-  become: true 
   tasks: 
    - name: Printe OS info
      ansible.builtin.package:
