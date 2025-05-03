@@ -1,6 +1,5 @@
----
-- hosts : windows
-  tasks: 
-   - name: Printe OS info
-     ansible.builtin.package:
-       name: apache2
+- name: Test connexion WinRM
+  hosts: windows
+  tasks:
+    - name: Ping via WinRM
+      ansible.windows.win_ping:
