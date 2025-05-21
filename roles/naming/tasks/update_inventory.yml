@@ -1,0 +1,27 @@
+---
+# Tasks pour mettre à jour l'inventaire
+
+- name: Ajouter le nouveau nom à l'inventaire final s'il manque
+  set_fact:
+    inventaire_final: "{{ inventaire_fusionne + [new_hostname] if new_hostname not in inventaire_fusionne else inventaire_fusionne }}"
+  delegate_to: localhost
+
+- name: Générer le fichier d'inventaire dédupliqué
+  copy:
+    dest: "{{ inventaire_path | default(inventory_dir + '/hosts.yml') }}"
+    content: |
+      [ad_computers]
+      {% for name in inventaire_final %}
+      {{ name }}.{{ domain_suffix | default('fonteynethekitchen.local') }}
+      {% endfor %}
+  delegate_to: localhost
+
+- name: Afficher l'inventaire écrit (optionnel, activé si debug_mode est vrai)
+  debug:
+    msg: |
+      Inventaire actualisé :
+      [ad_computers]
+      {% for name in inventaire_final %}
+      {{ name }}.{{ domain_suffix | default('fonteynethekitchen.local') }}
+      {% endfor %}
+  when: debug_mode | default(false) 

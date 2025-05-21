@@ -1,0 +1,10 @@
+---
+- name: Interrogation LDAP
+  hosts: localhost
+  gather_facts: no
+  vars:
+    debug_mode: "{{ debug_mode | default(false) }}"
+  roles:
+    - role: ldap
+      # Les variables ldap_server, ldap_user, ldap_password, ldap_base
+      # seront fournies par Semaphore 

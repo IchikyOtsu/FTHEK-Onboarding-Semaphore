@@ -1,0 +1,26 @@
+---
+- name: Onboarding simple (mode par défaut)
+  hosts: onboarding
+  gather_facts: yes
+  roles:
+    - role: onboarding
+      vars:
+        # Ces variables seront fournies par Semaphore
+        # use_simple_naming: true
+        debug_mode: "{{ debug_mode | default(false) }}"
+
+- name: Onboarding avancé avec LDAP et numérotation automatique
+  hosts: onboarding_advanced
+  gather_facts: yes
+  roles:
+    - role: onboarding
+      vars:
+        # Ces variables seront fournies par Semaphore
+        # use_simple_naming: false
+        # update_inventory: true
+        debug_mode: "{{ debug_mode | default(false) }}"
+  tasks:
+    - name: Inclure les tâches d'onboarding avancé
+      include_role:
+        name: onboarding
+        tasks_from: advanced_naming 

@@ -1,0 +1,16 @@
+---
+# Valeurs par défaut pour le rôle d'onboarding
+# Ces valeurs seront surchargées par les variables de Semaphore
+
+# Mode de nommage (simple ou avancé)
+use_simple_naming: "{{ use_simple_naming | default(true) }}"
+update_inventory: "{{ update_inventory | default(true) }}"
+
+# Correspondance département-préfixe (à configurer dans Semaphore)
+prefix_map: "{{ prefix_map | default({}) }}"
+
+# Type de machine par défaut (pour le nommage avancé)
+machine_type: "{{ machine_type | default('PC') }}"
+
+# Mode debug
+debug_mode: "{{ debug_mode | default(false) }}" 

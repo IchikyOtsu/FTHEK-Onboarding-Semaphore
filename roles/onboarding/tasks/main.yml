@@ -1,0 +1,30 @@
+---
+# Tasks pour l'onboarding des machines Windows
+
+- name: Lire le département depuis C:\departement.txt
+  ansible.windows.win_shell: |
+    Get-Content -Path 'C:\departement.txt'
+  register: departement_raw
+
+- name: Nettoyer le département
+  set_fact:
+    departement: "{{ departement_raw.stdout | trim }}"
+
+- name: Vérifier que le département est valide
+  fail:
+    msg: "Département '{{ departement }}' non reconnu"
+  when: departement not in prefix_map
+
+- name: Générer le nom adapté au département
+  set_fact:
+    new_hostname: "{{ prefix_map[departement] }}{{ ansible_hostname | regex_replace('\\W+', '') | lower }}"
+  when: use_simple_naming | default(true)
+
+- name: Appliquer le nom de machine
+  ansible.windows.win_hostname:
+    name: "{{ new_hostname }}"
+  register: hostname_result
+
+- name: Reboot si nécessaire
+  ansible.windows.win_reboot:
+  when: hostname_result.changed 

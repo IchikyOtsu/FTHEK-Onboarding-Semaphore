@@ -1,0 +1,29 @@
+---
+# Tasks pour l'onboarding avec nommage avancé via LDAP
+
+- name: Déterminer le type de machine
+  set_fact:
+    type_machine: "{{ machine_type | default('PC') }}"
+
+- name: Inclure les tâches LDAP
+  include_role:
+    name: ldap
+
+- name: Inclure les tâches de génération de nom
+  include_role:
+    name: naming
+
+- name: Appliquer le nom de machine généré
+  ansible.windows.win_hostname:
+    name: "{{ new_hostname }}"
+  register: hostname_result
+
+- name: Mettre à jour l'inventaire
+  include_role:
+    name: naming
+    tasks_from: update_inventory
+  when: update_inventory | default(true)
+
+- name: Reboot si nécessaire
+  ansible.windows.win_reboot:
+  when: hostname_result.changed 

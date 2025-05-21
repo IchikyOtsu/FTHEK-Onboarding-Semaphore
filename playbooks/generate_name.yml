@@ -1,0 +1,23 @@
+---
+- name: Génération de nom unique
+  hosts: localhost
+  gather_facts: no
+  vars:
+    # Ces variables seront fournies par Semaphore
+    # departement: "IT"
+    # type_machine: "PC"
+    debug_mode: "{{ debug_mode | default(false) }}"
+    inventaire_path: "{{ inventaire_path | default(inventory_dir + '/hosts.yml') }}"
+  tasks:
+    - name: Inclure les tâches LDAP pour récupérer les noms existants
+      include_role:
+        name: ldap
+
+    - name: Générer un nom unique
+      include_role:
+        name: naming
+
+    - name: Mettre à jour l'inventaire
+      include_role:
+        name: naming
+        tasks_from: update_inventory 

@@ -1,0 +1,28 @@
+---
+# Tasks pour récupérer les données LDAP
+
+- name: Interroger l'AD pour obtenir les noms d'ordinateurs
+  shell: >
+    ldapsearch -x -H "{{ ldap_server }}"
+    -D "{{ ldap_user }}"
+    -w "{{ ldap_password }}"
+    -b "{{ ldap_base }}"
+    "(objectClass=computer)"
+    name
+  register: ldap_output
+
+- name: Extraire les noms depuis la sortie brute
+  set_fact:
+    noms_machines_ad: >-
+      {{
+        ldap_output.stdout.splitlines()
+        | select('match', '^name:')
+        | map('regex_replace', '^name:\\s*', '')
+        | reject('equalto', '')
+        | list
+      }}
+
+- name: Afficher les noms extraits (optionnel, activé si debug_mode est vrai)
+  debug:
+    var: noms_machines_ad
+  when: debug_mode | default(false) 
