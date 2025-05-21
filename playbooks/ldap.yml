@@ -16,10 +16,17 @@
     - name: Afficher la sortie brute LDAP
       debug:
         var: ldap_raw.stdout
-    - name: Extraire les noms depuis la sortie brute
-      set_fact:
-        noms_machines_ad: >-
-          {{ ldap_raw.stdout.split('\n') | select('match', '^name:') | map('regex_replace', '^name: ', '') | list }}
+- name: Extraire les noms depuis la sortie brute
+  set_fact:
+    noms_machines_ad: >-
+      {{
+        ldap_raw.stdout.splitlines()
+        | select('match', '^name:')
+        | map('regex_replace', '^name:\\s*', '')
+        | reject('equalto', '')
+        | list
+      }}
+
     - name: Afficher les noms extraits
       debug:
         var: noms_machines_ad
