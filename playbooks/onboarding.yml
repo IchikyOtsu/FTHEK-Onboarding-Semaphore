@@ -43,25 +43,29 @@
   ###################################################################
   # 2) Construire la liste des hostnames existants
   ###################################################################
-  - name: Hostnames déjà dans l’inventaire
+  - name: Mettre inventaire_lignes à liste vide
     set_fact:
-      inventaire_hostnames: >-
-        {{
-          hostvars['localhost'].inventaire_txt.splitlines()
-          | reject('match', '^\\s*\\[.*\\]')              # ignore les sections ini
-          | reject('equalto', '')
-          | list
-        }}
-
+      inventaire_lignes: []
+  
+  - name: Décoder l'inventaire s'il existe
+    set_fact:
+      inventaire_lignes: "{{ (hostvars['localhost'].inventaire_b64_global | b64decode).split('\n') }}"
+    when: hostvars['localhost'].inventaire_b64_global | length > 0
+  
+  - name: Hostnames déjà dans l’inventaire           # ← ICI
+    set_fact:
+      inventaire_hostnames: "{{ hostvars['localhost'].inventaire_txt.splitlines()
+                                | reject('match', '^\\s*\\[.*\\]')
+                                | reject('equalto', '')
+                                | list }}"
+  
   - name: Hostnames du même département
     set_fact:
-      existants_dep: >-
-        {{
-          inventaire_hostnames
-          | map('regex_replace', '\\..*$', '')            # retire le domaine
-          | select('match', '^' ~ prefix_map[departement] ~ '-\\d{3}$')
-          | list
-        }}
+      existants_dep: "{{ inventaire_hostnames
+                        | map('regex_replace', '\\..*$', '')
+                        | select('match', '^' ~ prefix_map[departement] ~ '-\\d{3}$')
+                        | list }}"
+
 
   - name: IDs déjà pris
     set_fact:
