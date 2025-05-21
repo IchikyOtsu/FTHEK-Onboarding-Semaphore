@@ -37,7 +37,10 @@
       ignore_errors: yes          # 1ère exécution : le fichier peut ne pas exister
       delegate_to: localhost
       run_once: true
-
+      vars:
+        ansible_connection: local
+        ansible_python_interpreter: "{{ ansible_playbook_python }}"
+    
     - name: Partager le contenu à tous les hôtes
       set_fact:
         inventaire_content_b64: "{{ inventaire_slurp.content | default('') }}"
@@ -101,6 +104,9 @@
         - new_hostname not in existants
       delegate_to: localhost
       run_once: true
+      vars:
+        ansible_connection: local
+        ansible_python_interpreter: "{{ ansible_playbook_python }}"
 
     - name: Confirmation
       debug:
