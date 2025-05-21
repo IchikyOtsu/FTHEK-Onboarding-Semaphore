@@ -1,3 +1,4 @@
+---
 - name: Onboarding automatique depuis fichier texte
   hosts: onboarding
   gather_facts: yes
@@ -10,8 +11,7 @@
       COM: "COM-LAPTOP"
 
   tasks:
-    # --------------------------------------------------------------
-    # 1) lire et valider le département
+    # 1) Lire et valider le département
     - name: Lire le département
       ansible.windows.win_shell: Get-Content -Path 'C:\\departement.txt'
       register: departement_raw
@@ -23,8 +23,7 @@
         msg: "Département « {{ departement }} » non reconnu"
       when: departement not in prefix_map
 
-    # --------------------------------------------------------------
-    # 2) lire l’inventaire local et calculer l’ID
+    # 2) Lire l’inventaire local et calculer le prochain ID
     - name: Récupérer le fichier d’inventaire
       slurp:
         src: "{{ inventaire_path }}"
@@ -39,9 +38,9 @@
           {{
             inventaire_content_b64
             | b64decode | split('\n')
-            | reject('match', '^\[.*\]')       # ignore les sections .ini
+            | reject('match', '^\[.*\]')
             | reject('equalto', '')
-            | map('regex_replace', '\\..*$', '')    # enlève le domaine
+            | map('regex_replace', '\\..*$', '')
             | select('match', '^' ~ prefix_map[departement] ~ '-\\d{3}$')
             | list
           }}
@@ -50,10 +49,11 @@
         next_id: "{{ '%03d' % ((range(1,1000) | difference(existants | map('regex_replace','^.*-(\\d{3})$','\\1') | map('int'))) | min) }}"
         new_hostname: "{{ prefix_map[departement] }}-{{ next_id }}"
 
-    - debug: msg="Nom à appliquer : {{ new_hostname }}"
+    - name: Afficher le nom généré
+      debug:
+        msg: "Nom à appliquer : {{ new_hostname }}"
 
-    # --------------------------------------------------------------
-    # 3) renommer + reboot
+    # 3) Renommer + reboot
     - name: Appliquer le nom de machine
       ansible.windows.win_hostname:
         name: "{{ new_hostname }}"
@@ -62,8 +62,7 @@
     - ansible.windows.win_reboot:
       when: result.changed
 
-    # --------------------------------------------------------------
-    # 4) mettre à jour l’inventaire (localhost, 1 seule fois)
+    # 4) Mettre à jour l’inventaire (localhost, une seule fois)
     - name: Ajouter le nom à l'inventaire
       copy:
         dest: "{{ inventaire_path }}"
@@ -76,7 +75,8 @@
       delegate_to: localhost
       run_once: true
 
-    - debug:
+    - name: Confirmation inventaire
+      debug:
         msg: "Inventaire mis à jour avec {{ new_hostname }}"
       when: new_hostname not in existants
       run_once: true
