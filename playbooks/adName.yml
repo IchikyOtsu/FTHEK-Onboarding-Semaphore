@@ -1,4 +1,4 @@
-- name: Onboarding - Générer un nom unique et créer inventaire AD
+- name: Onboarding - Générer un nom unique et mettre à jour l'inventaire AD
   hosts: localhost
   gather_facts: no
 
@@ -24,17 +24,34 @@
             | list
           }}
 
-    - name: Afficher les noms détectés dans l'AD
-      debug:
-        var: noms_machines_ad
+    - name: Lire le fichier d'inventaire existant s’il existe
+      slurp:
+        src: "{{ inventaire_path }}"
+      register: inventaire_slurp
+      ignore_errors: yes
+
+    - name: Extraire les machines déjà listées
+      set_fact:
+        inventaire_connu: >-
+          {{
+            inventaire_slurp['content'] | default('') | b64decode | splitlines()
+            | reject('match', '^\[.*\]')  # ignore [group]
+            | reject('equalto', '')       # ignore lignes vides
+            | map('regex_replace', '\.fonteynethekitchen\.local$', '')
+            | list
+          }}
+
+    - name: Fusionner sans doublon
+      set_fact:
+        inventaire_final: "{{ (inventaire_connu + noms_machines_ad) | unique | sort }}"
 
     - name: Définir le préfixe de nom
       set_fact:
         prefix: "{{ departement }}-{{ type_machine }}"
 
-    - name: Extraire uniquement les noms correspondant au modèle
+    - name: Extraire les noms correspondant au modèle
       set_fact:
-        existants: "{{ noms_machines_ad | select('match', '^' ~ prefix ~ '-\\d{3}$') | list }}"
+        existants: "{{ inventaire_final | select('match', '^' ~ prefix ~ '-\\d{3}$') | list }}"
 
     - name: Extraire les IDs utilisés
       set_fact:
@@ -43,7 +60,7 @@
     - name: Générer la liste des ID candidats
       set_fact:
         candidats_ids: "{{ range(1, 1000) | list }}"
-    
+
     - name: Définir le plus petit ID libre
       set_fact:
         next_id: "{{ '%03d' | format(item) }}"
@@ -60,20 +77,20 @@
       debug:
         msg: "Nom disponible généré : {{ new_hostname }}"
 
-    - name: Générer le fichier d'inventaire
+    - name: Générer le fichier d'inventaire dédupliqué
       copy:
         dest: "{{ inventaire_path }}"
         content: |
           [ad_computers]
-          {% for name in noms_machines_ad %}
+          {% for name in inventaire_final %}
           {{ name }}.fonteynethekitchen.local
           {% endfor %}
 
-    - name: Afficher les lignes ajoutées à l'inventaire
+    - name: Afficher l'inventaire écrit
       debug:
         msg: |
-          Contenu écrit dans {{ inventaire_path }} :
+          Inventaire actualisé :
           [ad_computers]
-          {% for name in noms_machines_ad %}
+          {% for name in inventaire_final %}
           {{ name }}.fonteynethekitchen.local
           {% endfor %}
