@@ -15,25 +15,19 @@
 
   tasks:
   ###################################################################
-  # 0) Charger l’inventaire (une seule fois) et le partager
+  # 0) Lire le fichier inventaire UNE fois sur le contrôleur
   ###################################################################
-  - name: Charger l'inventaire (peut être absent)
-    slurp:
-      src: "{{ inventaire_path }}"
-    register: inventaire_slurp
-    ignore_errors: true
-    delegate_to: localhost
-    run_once: true
-
-  - name: Partager le contenu base64 à tous les hôtes
+  - name: Lire le contenu du fichier (vide si absent)
     set_fact:
-      inventaire_b64_global: "{{ inventaire_slurp.content | default('') }}"
+      inventaire_txt: "{{ lookup('file', inventaire_path, errors='ignore') | default('') }}"
     delegate_to: localhost
     delegate_facts: true
     run_once: true
+    vars:
+      ansible_connection: local          # force la connexion locale
 
   ###################################################################
-  # 1) Lire et valider le département
+  # 1) Département
   ###################################################################
   - name: Lire le département
     ansible.windows.win_shell: Get-Content -Path 'C:\\departement.txt'
@@ -47,64 +41,51 @@
     when: departement not in prefix_map
 
   ###################################################################
-  # 2) Construire la liste des lignes du .ini et calculer le prochain nom
+  # 2) Construire la liste des hostnames existants
   ###################################################################
-  - name: Mettre inventaire_lignes à liste vide
-    set_fact:
-      inventaire_lignes: []
-
-  - name: Décoder l'inventaire s'il existe
-    set_fact:
-      inventaire_lignes: "{{ (hostvars['localhost'].inventaire_b64_global | b64decode).split('\n') }}"
-    when: hostvars['localhost'].inventaire_b64_global | length > 0
-
-  - name: Toutes les lignes hostnames
+  - name: Hostnames déjà dans l’inventaire
     set_fact:
       inventaire_hostnames: >-
         {{
-          inventaire_lignes
-          | reject('match', '^\\[.*\\]')
+          hostvars['localhost'].inventaire_txt.splitlines()
+          | reject('match', '^\\s*\\[.*\\]')              # ignore les sections ini
           | reject('equalto', '')
           | list
         }}
 
-  - name: Noms existants du même département
+  - name: Hostnames du même département
     set_fact:
       existants_dep: >-
         {{
           inventaire_hostnames
-          | map('regex_replace', '\\..*$', '')
+          | map('regex_replace', '\\..*$', '')            # retire le domaine
           | select('match', '^' ~ prefix_map[departement] ~ '-\\d{3}$')
           | list
         }}
 
-  - name: IDs déjà pris (dans ce département)
+  - name: IDs déjà pris
     set_fact:
       existants_ids: "{{ existants_dep
                         | map('regex_replace', '^.*-(\\d{3})$', '\\1')
                         | map('int')
                         | list }}"
 
-  - name: Prochain ID libre
+  - name: Trouver le plus petit ID libre
     set_fact:
       next_id: "{{ '%03d' % ((range(1,1000) | difference(existants_ids)) | min) }}"
 
-  # --- correctif : deux set_fact séparés -----------------------------
-  - name: Définir le nouveau hostname
+  - name: Définir le hostname et le FQDN
     set_fact:
       new_hostname: "{{ prefix_map[departement] }}-{{ next_id }}"
-
-  - name: Construire le FQDN complet
-    set_fact:
-      new_fqdn: "{{ new_hostname }}{{ fqdn_suffix }}"
+      new_fqdn: "{{ prefix_map[departement] }}-{{ next_id }}{{ fqdn_suffix }}"
 
   - debug:
-      msg: "Nom à appliquer : {{ new_hostname }}"
+      msg: "→ Nom choisi : {{ new_hostname }}"
 
   ###################################################################
-  # 3) Renommer le PC Windows + reboot
+  # 3) Renommer le poste + reboot si besoin
   ###################################################################
-  - name: Appliquer le nom
+  - name: Appliquer le nouveau nom
     ansible.windows.win_hostname:
       name: "{{ new_hostname }}"
     register: rename_result
@@ -115,7 +96,7 @@
   ###################################################################
   # 4) Ajouter la ligne dans l’inventaire (si absente)
   ###################################################################
-  - name: S’assurer que la section [ad_computers] existe
+  - name: Créer la section [ad_computers] si besoin
     lineinfile:
       path: "{{ inventaire_path }}"
       line: "[ad_computers]"
@@ -125,7 +106,7 @@
     connection: local
     run_once: true
 
-  - name: Ajouter le FQDN dans l’inventaire
+  - name: Ajouter le FQDN uniquement s'il n'existe pas
     lineinfile:
       path: "{{ inventaire_path }}"
       line: "{{ new_fqdn }}"
