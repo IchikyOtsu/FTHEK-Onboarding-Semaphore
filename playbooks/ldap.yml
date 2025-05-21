@@ -1,15 +1,18 @@
 - name: LDAP
   hosts: localhost
   gather_facts: no
+
   tasks:
     - name: Voir la sortie brute de ldapsearch
-      shell: |
-        ldapsearch -x -H ldap://192.168.10.4 \
-  -D "Administrateur@fonteynethekitchen.local" -w "motdepasse" \
-  -b "OU=Bureau Computers,DC=fonteynethekitchen,DC=local" \
-  "(objectClass=computer)" name
+      shell: >
+        ldapsearch -x -H ldap://192.168.10.4
+        -D "Administrateur@fonteynethekitchen.local"
+        -w "motdepasse"
+        -b "OU=Bureau Computers,DC=fonteynethekitchen,DC=local"
+        "(objectClass=computer)"
+        name
       register: ldap_raw
-    
+
     - name: Afficher la sortie brute LDAP
       debug:
         var: ldap_raw.stdout
