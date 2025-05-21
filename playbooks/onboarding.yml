@@ -3,7 +3,6 @@
   gather_facts: no
 
   vars:
-    inventaire_path: /tmp/semaphore/inventaire_ad.ini
     departement: "IT"
     type_machine: "LAPTOP"
     prefix: "{{ departement }}-{{ type_machine }}"
