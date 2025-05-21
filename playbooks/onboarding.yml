@@ -1,6 +1,12 @@
 - name: Onboard poste Windows
   hosts: onboarding
   gather_facts: yes
+
+  tasks:
+    - name: Début du playbook
+      debug:
+        msg: "Playbook lancé correctement"
+
   vars_prompt:
     - name: departement
       prompt: "Département (ex: IT, HR, FIN)"
