@@ -66,12 +66,12 @@
 
     - name: Générer le plus petit ID libre et le nom final
       set_fact:
-          new_hostname: >-
-            {{
-              prefix ~ '-' ~ (
-                (range(1, 1000) | difference(existants_ids | default([])) | min) | int | format('%03d')
-              )
-            }}
+        new_hostname: >-
+          {{
+            prefix ~ '-' ~ (
+              '%03d' % (range(1, 1000) | difference(existants_ids | default([])) | min)
+            )
+          }}
 
     - name: Afficher le nom généré
       debug:
