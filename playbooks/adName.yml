@@ -1,16 +1,28 @@
 - name: Onboarding - Générer un nom unique et créer inventaire AD
   hosts: localhost
   gather_facts: no
+
   tasks:
     - name: Interroger l'AD pour obtenir les noms d'ordinateurs
-      shell: |
-        ldapsearch -x -H "{{ ldap_server }}" -D "{{ ldap_user }}" -w "{{ ldap_password }}" \
-        -b "{{ ldap_base }}" "(objectClass=computer)" name | grep '^name:' | cut -d' ' -f2
+      shell: >
+        ldapsearch -x -H "{{ ldap_server }}"
+        -D "{{ ldap_user }}"
+        -w "{{ ldap_password }}"
+        -b "{{ ldap_base }}"
+        "(objectClass=computer)"
+        name
       register: ldap_output
 
-    - name: Extraire et filtrer les noms
+    - name: Extraire les noms depuis la sortie brute
       set_fact:
-        noms_machines_ad: "{{ ldap_output.stdout_lines | reject('equalto', '') | list }}"
+        noms_machines_ad: >-
+          {{
+            ldap_output.stdout.splitlines()
+            | select('match', '^name:')
+            | map('regex_replace', '^name:\\s*', '')
+            | reject('equalto', '')
+            | list
+          }}
 
     - name: Afficher les noms détectés dans l'AD
       debug:
@@ -39,7 +51,6 @@
       when: item not in existants_ids
       register: tentative_nom
       until: tentative_nom is succeeded
-
 
     - name: Générer le nom unique
       set_fact:
