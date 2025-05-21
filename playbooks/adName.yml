@@ -29,6 +29,7 @@
         src: "{{ inventaire_path }}"
       register: inventaire_slurp
       ignore_errors: yes
+
     - name: Extraire les machines déjà listées (ou vide si fichier manquant)
       set_fact:
         inventaire_connu: >-
@@ -47,12 +48,9 @@
             ) else []
           }}
 
-
-
-
-    - name: Fusionner sans doublon
+    - name: Fusionner sans doublon avec noms AD
       set_fact:
-        inventaire_final: "{{ (inventaire_connu + noms_machines_ad) | unique | sort }}"
+        inventaire_fusionne: "{{ (inventaire_connu + noms_machines_ad) | unique | sort }}"
 
     - name: Définir le préfixe de nom
       set_fact:
@@ -60,31 +58,30 @@
 
     - name: Extraire les noms correspondant au modèle
       set_fact:
-        existants: "{{ inventaire_final | select('match', '^' ~ prefix ~ '-\\d{3}$') | list }}"
+        existants: "{{ inventaire_fusionne | select('match', '^' ~ prefix ~ '-\\d{3}$') | list }}"
 
     - name: Extraire les IDs utilisés
       set_fact:
         existants_ids: "{{ existants | map('regex_replace', '^' ~ prefix ~ '-(\\d{3})$', '\\1') | map('int') | list }}"
 
-    - name: Générer la liste des ID candidats
+    - name: Générer le plus petit ID libre et le nom final
       set_fact:
-        candidats_ids: "{{ range(1, 1000) | list }}"
-
-    - name: Définir le plus petit ID libre
-      set_fact:
-        next_id: "{{ '%03d' | format(item) }}"
-      loop: "{{ candidats_ids }}"
-      when: item not in existants_ids
-      register: tentative_nom
-      until: tentative_nom is succeeded
-
-    - name: Générer le nom unique
-      set_fact:
-        new_hostname: "{{ prefix }}-{{ next_id }}"
+        new_hostname: >-
+          {{
+            prefix ~ '-' ~ (
+              (range(1, 1000) | difference(existants_ids | default([])) | min)
+              | string | regex_replace('^(\\d)$', '00\\1')
+                      | regex_replace('^(\\d{2})$', '0\\1')
+            )
+          }}
 
     - name: Afficher le nom généré
       debug:
         msg: "Nom disponible généré : {{ new_hostname }}"
+
+    - name: Ajouter le nouveau nom à l’inventaire final s’il manque
+      set_fact:
+        inventaire_final: "{{ inventaire_fusionne + [new_hostname] if new_hostname not in inventaire_fusionne else inventaire_fusionne }}"
 
     - name: Générer le fichier d'inventaire dédupliqué
       copy:
