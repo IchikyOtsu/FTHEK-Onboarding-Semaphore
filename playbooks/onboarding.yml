@@ -59,29 +59,26 @@
   ###########################################################################
   # 2) Décoder le contenu du .ini (s'il existe) et calculer le prochain nom
   ###########################################################################
-  - name: Décoder l’inventaire (ou liste vide)
+  - name: Initialiser la liste vide
     set_fact:
-      inventaire_lignes: >-
-        {{
-          inventaire_content_b64
-          | ternary(
-              (inventaire_content_b64 | b64decode | split('\n')),
-              []
-            )
-        }}
+      inventaire_lignes: []
 
-  - name: Filtrer les noms existants du même département
+  - name: Décoder le fichier inventaire s'il existe
+    set_fact:
+      inventaire_lignes: "{{ (inventaire_content_b64 | b64decode).split('\n') }}"
+    when: inventaire_content_b64 | length > 0
+
+  - name: Filtrer les noms existants de ce département
     set_fact:
       existants: >-
         {{
           inventaire_lignes
-          | reject('match', '^\[.*\]')          # supprime les sections ini
-          | reject('equalto', '')               # lignes vides
-          | map('regex_replace', '\..*$', '')   # retire le domaine
+          | reject('match', '^\[.*\]')
+          | reject('equalto', '')
+          | map('regex_replace', '\..*$', '')
           | select('match', '^' ~ prefix_map[departement] ~ '-\d{3}$')
           | list
         }}
-
   - name: IDs déjà pris
     set_fact:
       existants_ids: "{{ existants | map('regex_replace','^.*-(\\d{3})$','\\1')
