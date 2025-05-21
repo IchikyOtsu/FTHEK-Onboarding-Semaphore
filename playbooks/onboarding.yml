@@ -1,0 +1,40 @@
+- name: Onboarding Windows PC
+  hosts: onboarding
+  gather_facts: yes
+  vars_prompt:
+    - name: departement
+      prompt: "Quel est le département du poste ? (ex: IT, HR, FIN)"
+      private: no
+
+  vars:
+    prefix_map:
+      IT: "IT-"
+      HR: "HR-"
+      FIN: "FIN-"
+
+  tasks:
+    - name: Générer le nouveau nom d’hôte
+      set_fact:
+        new_hostname: "{{ prefix_map[departement] }}{{ ansible_hostname | regex_replace('\\W+', '') | lower }}"
+
+    - name: Renommer le poste
+      ansible.windows.win_hostname:
+        name: "{{ new_hostname }}"
+      register: rename_result
+
+    - name: Redémarrer si renommage fait
+      ansible.windows.win_reboot:
+      when: rename_result.changed
+
+    - name: Joindre au domaine (exemple)
+      ansible.windows.win_domain_membership:
+        dns_domain_name: fonteynethekitchen.local
+        domain_admin_user: fonteynethekitchen\\adminjoin
+        domain_admin_password: motDePasseDomaine
+        hostname: "{{ new_hostname }}"
+        state: domain
+      register: domain_join
+
+    - name: Redémarrer après le join domaine
+      ansible.windows.win_reboot:
+      when: domain_join.changed
