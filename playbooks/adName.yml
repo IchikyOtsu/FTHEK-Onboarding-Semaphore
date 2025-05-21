@@ -11,7 +11,10 @@
     - name: Extraire les noms existants
       set_fact:
         noms_machines_ad: "{{ ldap_output.stdout_lines | map('regex_replace', '^name: ', '') | list }}"
-
+    - name: Définir le préfixe standard
+      set_fact:
+        prefix: "{{ departement }}-{{ type_machine }}"
+        
     - name: Générer contenu de l'inventaire
       copy:
         dest: "{{ inventaire_path }}"
@@ -23,8 +26,8 @@
 
     - name: Filtrer les noms déjà utilisés pour ce type/département
       set_fact:
-        prefix: "{{ departement }}-{{ type_machine }}"
         existants: "{{ noms_machines_ad | select('match', '^' ~ prefix ~ '-\\d{3}$') | list }}"
+
 
     - name: Extraire numéros existants
       set_fact:
