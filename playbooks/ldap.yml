@@ -1,9 +1,13 @@
-- name: Voir la sortie brute de ldapsearch
-  shell: |
-    ldapsearch -x -H "{{ ldap_server }}" -D "{{ ldap_user }}" -w "{{ ldap_password }}" \
-    -b "{{ ldap_base }}" "(objectClass=computer)" name
-  register: ldap_raw
-
-- name: Afficher la sortie brute LDAP
-  debug:
-    var: ldap_raw.stdout
+- name: LDAP
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: Voir la sortie brute de ldapsearch
+      shell: |
+        ldapsearch -x -H "{{ ldap_server }}" -D "{{ ldap_user }}" -w "{{ ldap_password }}" \
+        -b "{{ ldap_base }}" "(objectClass=computer)" name
+      register: ldap_raw
+    
+    - name: Afficher la sortie brute LDAP
+      debug:
+        var: ldap_raw.stdout
