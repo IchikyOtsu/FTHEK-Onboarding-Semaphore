@@ -4,12 +4,15 @@
 
   vars:
     prefix_map:
-      IT: "IT-LAPTOP"
-      HR: "HR-LAPTOP"
+      IT:  "IT-LAPTOP"
+      HR:  "HR-LAPTOP"
       FIN: "FIN-LAPTOP"
       COM: "COM-LAPTOP"
 
   tasks:
+    # ------------------------------------------------------------------
+    # 1) Quel est le département du poste Windows ?
+    # ------------------------------------------------------------------
     - name: Lire le département depuis C:\departement.txt
       ansible.windows.win_shell: |
         Get-Content -Path 'C:\\departement.txt'
@@ -21,51 +24,58 @@
 
     - name: Vérifier que le département est valide
       fail:
-        msg: "Département '{{ departement }}' non reconnu"
+        msg: "Département « {{ departement }} » non reconnu"
       when: departement not in prefix_map
 
-    - name: Récupérer les noms existants de l'inventaire
+    # ------------------------------------------------------------------
+    # 2) Obtenir les noms déjà utilisés (depuis l’inventaire local)
+    # ------------------------------------------------------------------
+    - name: Récupérer le fichier d’inventaire
       slurp:
         src: "{{ inventaire_path }}"
       register: inventaire_slurp
-      ignore_errors: yes
+      ignore_errors: yes          # 1ère exécution : le fichier peut ne pas exister
+      delegate_to: localhost
+      run_once: true
 
-    - name: Extraire les noms connus
+    - name: Partager le contenu à tous les hôtes
+      set_fact:
+        inventaire_content_b64: "{{ inventaire_slurp.content | default('') }}"
+      delegate_facts: true        # diffuse la variable dans hostvars
+      delegate_to: localhost
+      run_once: true
+
+    - name: Extraire les noms connus pour ce département
       set_fact:
         existants: >-
           {{
-            (
-              inventaire_slurp.content | b64decode | split('\n')
-              | reject('match', '^\[.*\]')
-              | reject('equalto', '')
-              | map('regex_replace', '\\..*$', '')
-              | select('match', '^' ~ prefix_map[departement] ~ '-\\d{3}$')
-              | list
-            ) if (inventaire_slurp is defined and 'content' in inventaire_slurp) else []
+            inventaire_content_b64
+            | b64decode | split('\n')
+            | reject('match', '^\[.*\]')     # on ignore les sections ini
+            | reject('equalto', '')
+            | map('regex_replace', '\\..*$', '')
+            | select('match', '^' ~ prefix_map[departement] ~ '-\\d{3}$')
+            | list
           }}
 
-    - name: Extraire les IDs déjà pris
+    - name: IDs déjà pris
       set_fact:
-        existants_ids: >-
-          {{ existants | map('regex_replace', '^.*-(\\d{3})$', '\\1') | map('int') | list }}
+        existants_ids: "{{ existants | map('regex_replace', '^.*-(\\d{3})$', '\\1') | map('int') | list }}"
 
-    - name: Générer le plus petit ID libre
+    - name: Plus petit ID libre (1-999)
       set_fact:
-        next_id: >-
-          {{
-            '%03d' % (
-              (range(1, 1000) | difference(existants_ids | default([])) | min)
-            )
-          }}
+        next_id: "{{ '%03d' % ((range(1, 1000) | difference(existants_ids)) | min) }}"
 
-    - name: Générer le nom final unique
+    - name: Nom final unique
       set_fact:
         new_hostname: "{{ prefix_map[departement] }}-{{ next_id }}"
 
-    - name: Afficher le nom généré
-      debug:
+    - debug:
         msg: "Nom à appliquer : {{ new_hostname }}"
 
+    # ------------------------------------------------------------------
+    # 3) Renommer le poste, puis redémarrer si besoin
+    # ------------------------------------------------------------------
     - name: Appliquer le nom de machine
       ansible.windows.win_hostname:
         name: "{{ new_hostname }}"
@@ -75,19 +85,26 @@
       ansible.windows.win_reboot:
       when: result.changed
 
-    - name: Mettre à jour l'inventaire si le nom n'était pas présent
-      block:
-        - name: Ajouter le nom à l'inventaire
-          copy:
-            dest: "{{ inventaire_path }}"
-            content: |
-              [ad_computers]
-              {% for name in (existants + [new_hostname]) | unique | sort %}
-              {{ name }}.fonteynethekitchen.local
-              {% endfor %}
-          when: new_hostname not in existants
+    # ------------------------------------------------------------------
+    # 4) Mettre à jour l’inventaire (toujours sur localhost, une seule fois)
+    # ------------------------------------------------------------------
+    - name: Ajouter le nom à l'inventaire
+      copy:
+        dest: "{{ inventaire_path }}"
+        content: |
+          [ad_computers]
+          {% for name in (existants + [new_hostname]) | unique | sort %}
+          {{ name }}.fonteynethekitchen.local
+          {% endfor %}
+      when:
+        - inventaire_path is defined
+        - new_hostname not in existants
+      delegate_to: localhost
+      run_once: true
 
-        - name: Confirmer l'ajout dans l'inventaire
-          debug:
-            msg: "Inventaire mis à jour avec {{ new_hostname }}"
-      when: inventaire_path is defined
+    - name: Confirmation
+      debug:
+        msg: "Inventaire mis à jour avec {{ new_hostname }}"
+      when:
+        - inventaire_path is defined
+        - new_hostname not in existants
