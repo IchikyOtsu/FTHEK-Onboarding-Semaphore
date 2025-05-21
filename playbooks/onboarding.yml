@@ -1,4 +1,3 @@
----
 - name: Onboarding automatique depuis fichier texte
   hosts: onboarding
   gather_facts: yes
@@ -11,78 +10,61 @@
       COM: "COM-LAPTOP"
 
   tasks:
-    # ------------------------------------------------------------------
-    # 1) Lire et valider le département stocké sur le PC Windows
-    # ------------------------------------------------------------------
-    - name: Lire le département depuis C:\departement.txt
+    # --------------------------------------------------------------
+    # 1) lire et valider le département
+    - name: Lire le département
       ansible.windows.win_shell: Get-Content -Path 'C:\\departement.txt'
       register: departement_raw
 
-    - name: Nettoyer le département
-      set_fact:
+    - set_fact:
         departement: "{{ departement_raw.stdout | trim }}"
 
-    - name: Vérifier que le département est valide
-      fail:
+    - fail:
         msg: "Département « {{ departement }} » non reconnu"
       when: departement not in prefix_map
 
-    # ------------------------------------------------------------------
-    # 2) Lire l’inventaire (fichier local) et calculer le prochain ID
-    # ------------------------------------------------------------------
+    # --------------------------------------------------------------
+    # 2) lire l’inventaire local et calculer l’ID
     - name: Récupérer le fichier d’inventaire
       slurp:
         src: "{{ inventaire_path }}"
       register: inventaire_slurp
-      ignore_errors: yes            # 1ère exécution : fichier absent = OK
+      ignore_errors: yes
       delegate_to: localhost
-      connection: local
+      run_once: true
 
-    - name: Extraire les noms connus pour ce département
-      set_fact:
+    - set_fact:
         inventaire_content_b64: "{{ inventaire_slurp.content | default('') }}"
         existants: >-
           {{
             inventaire_content_b64
             | b64decode | split('\n')
-            | reject('match', '^\[.*\]')       # on ignore les sections .ini
+            | reject('match', '^\[.*\]')       # ignore les sections .ini
             | reject('equalto', '')
-            | map('regex_replace', '\\..*$', '')    # on enlève le domaine
+            | map('regex_replace', '\\..*$', '')    # enlève le domaine
             | select('match', '^' ~ prefix_map[departement] ~ '-\\d{3}$')
             | list
           }}
 
-    - name: IDs déjà pris
-      set_fact:
-        existants_ids: "{{ existants | map('regex_replace', '^.*-(\\d{3})$', '\\1') | map('int') | list }}"
-
-    - name: Générer le plus petit ID libre
-      set_fact:
-        next_id: "{{ '%03d' % ((range(1, 1000) | difference(existants_ids)) | min) }}"
-
-    - name: Construire le nouveau nom d’hôte
-      set_fact:
+    - set_fact:
+        next_id: "{{ '%03d' % ((range(1,1000) | difference(existants | map('regex_replace','^.*-(\\d{3})$','\\1') | map('int'))) | min) }}"
         new_hostname: "{{ prefix_map[departement] }}-{{ next_id }}"
 
-    - debug:
-        msg: "Nom à appliquer : {{ new_hostname }}"
+    - debug: msg="Nom à appliquer : {{ new_hostname }}"
 
-    # ------------------------------------------------------------------
-    # 3) Renommer la machine Windows + reboot si besoin
-    # ------------------------------------------------------------------
+    # --------------------------------------------------------------
+    # 3) renommer + reboot
     - name: Appliquer le nom de machine
       ansible.windows.win_hostname:
         name: "{{ new_hostname }}"
       register: result
 
-    - name: Redémarrer si nécessaire
-      ansible.windows.win_reboot:
+    - ansible.windows.win_reboot:
       when: result.changed
 
-    # ------------------------------------------------------------------
-    # 4) Mettre à jour l’inventaire (sur le nœud de contrôle, une seule fois)
-    # ------------------------------------------------------------------
-    - name: Ajouter/le nom à l'inventaire
+    # --------------------------------------------------------------
+    # 4) mettre à jour l’inventaire (localhost, 1 seule fois)
+    - name: Ajouter le nom à l'inventaire
       copy:
         dest: "{{ inventaire_path }}"
         content: |
@@ -90,17 +72,11 @@
           {% for name in (existants + [new_hostname]) | unique | sort %}
           {{ name }}.fonteynethekitchen.local
           {% endfor %}
-      when:
-        - inventaire_path is defined
-        - new_hostname not in existants
+      when: new_hostname not in existants
       delegate_to: localhost
-      connection: local
-      run_once: true                # une seule mise à jour suffit
+      run_once: true
 
-    - name: Confirmation inventaire
-      debug:
+    - debug:
         msg: "Inventaire mis à jour avec {{ new_hostname }}"
-      when:
-        - inventaire_path is defined
-        - new_hostname not in existants
+      when: new_hostname not in existants
       run_once: true
