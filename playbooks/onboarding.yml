@@ -34,12 +34,10 @@
       slurp:
         src: "{{ inventaire_path }}"
       register: inventaire_slurp
-      ignore_errors: yes          # 1ère exécution : le fichier peut ne pas exister
+      ignore_errors: yes
       delegate_to: localhost
+      connection: local        # ← ← ICI
       run_once: true
-      vars:
-        ansible_connection: local
-        ansible_python_interpreter: "{{ ansible_playbook_python }}"
     
     - name: Partager le contenu à tous les hôtes
       set_fact:
@@ -103,10 +101,8 @@
         - inventaire_path is defined
         - new_hostname not in existants
       delegate_to: localhost
+      connection: local        # ← ← ICI
       run_once: true
-      vars:
-        ansible_connection: local
-        ansible_python_interpreter: "{{ ansible_playbook_python }}"
 
     - name: Confirmation
       debug:
