@@ -12,88 +12,74 @@
       COM: "COM-LAPTOP"
 
   tasks:
-    # ------------------------------------------------------------------
-    # 1) Département du poste Windows
-    # ------------------------------------------------------------------
+    # 1) Département
     - name: Lire le département
       ansible.windows.win_shell: Get-Content -Path 'C:\\departement.txt'
       register: departement_raw
 
-    - name: Nettoyer et valider
+    - name: Nettoyer le département
       set_fact:
         departement: "{{ departement_raw.stdout | trim }}"
-      failed_when: departement not in prefix_map
-      msg: "Département « {{ departement }} » non reconnu"
 
-    # ------------------------------------------------------------------
-    # 2) Charger une seule fois l’inventaire (localhost)
-    # ------------------------------------------------------------------
-    - name: Charger l’inventaire
+    - name: Vérifier département
+      fail:
+        msg: "Département « {{ departement }} » non reconnu"
+      when: departement not in prefix_map
+
+    # 2) Charger inventaire une fois sur le contrôleur
+    - name: Charger l'inventaire
       slurp:
         src: "{{ inventaire_path }}"
       register: inventaire_slurp
-      ignore_errors: yes               # 1ʳᵉ exécution : fichier absent OK
+      ignore_errors: yes
       delegate_to: localhost
       vars:
         ansible_connection: local
       run_once: true
 
-    - name: Distribuer le contenu à tous les hôtes
-      add_host:
-        name: "{{ item }}"
-        inventaire_content_b64: "{{ inventaire_slurp.content | default('') }}"
-      loop: "{{ ansible_play_hosts }}"
+    - name: Stocker le contenu inventaire global
+      set_fact:
+        inventaire_content_b64_global: "{{ inventaire_slurp.content | default('') }}"
       delegate_to: localhost
       vars:
         ansible_connection: local
       run_once: true
 
-    # ------------------------------------------------------------------
-    # 3) Déterminer le prochain hostname disponible
-    # ------------------------------------------------------------------
+    # 3) Calculer le prochain nom
     - name: Extraire les noms connus
       set_fact:
         existants: >-
           {{
-            inventaire_content_b64
+            hostvars['localhost'].inventaire_content_b64_global
             | b64decode | split('\n')
             | reject('match', '^\[.*\]')
             | reject('equalto', '')
-            | map('regex_replace', '\..*$', '')
-            | select('match', '^' ~ prefix_map[departement] ~ '-\d{3}$')
+            | map('regex_replace', '\\..*$', '')
+            | select('match', '^' ~ prefix_map[departement] ~ '-\\d{3}$')
             | list
           }}
 
-    - name: IDs déjà pris
-      set_fact:
-        existants_ids: "{{ existants | map('regex_replace','^.*-(\\d{3})$','\\1') | map('int') | list }}"
-
     - name: Prochain ID libre
       set_fact:
-        next_id: "{{ '%03d' % ((range(1,1000) | difference(existants_ids)) | min) }}"
-
-    - name: Nouveau nom d’hôte
-      set_fact:
+        next_id: "{{ '%03d' % ((range(1,1000) | difference(existants | map('regex_replace','^.*-(\\d{3})$','\\1') | map('int'))) | min) }}"
         new_hostname: "{{ prefix_map[departement] }}-{{ next_id }}"
 
-    - debug:
+    - name: Afficher le nom généré
+      debug:
         msg: "Nom à appliquer : {{ new_hostname }}"
 
-    # ------------------------------------------------------------------
-    # 4) Renommer la machine + reboot si nécessaire
-    # ------------------------------------------------------------------
+    # 4) Renommer + reboot
     - name: Appliquer le nom
       ansible.windows.win_hostname:
         name: "{{ new_hostname }}"
       register: rename_result
 
-    - ansible.windows.win_reboot:
+    - name: Redémarrer si nécessaire
+      ansible.windows.win_reboot:
       when: rename_result.changed
 
-    # ------------------------------------------------------------------
-    # 5) Mettre à jour l’inventaire (une seule fois, localhost)
-    # ------------------------------------------------------------------
-    - name: Ajouter le nom dans l’inventaire
+    # 5) Mettre à jour l'inventaire
+    - name: Ajouter le nom dans l'inventaire
       copy:
         dest: "{{ inventaire_path }}"
         content: |
@@ -107,7 +93,8 @@
         ansible_connection: local
       run_once: true
 
-    - debug:
+    - name: Confirmation
+      debug:
         msg: "Inventaire mis à jour avec {{ new_hostname }}"
       when: new_hostname not in existants
       run_once: true
