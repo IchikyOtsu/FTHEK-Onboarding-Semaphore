@@ -14,7 +14,7 @@
 
   tasks:
   ###################################################################
-  # 0) Charger l’inventaire une seule fois sur le contrôleur
+  # 0) Charger l’inventaire (une seule fois) et le partager
   ###################################################################
   - name: Charger l'inventaire (peut être absent)
     slurp:
@@ -24,7 +24,7 @@
     delegate_to: localhost
     run_once: true
 
-  - name: Partager le contenu (base64) à tous les hôtes
+  - name: Partager le contenu base64 à tous les hôtes
     set_fact:
       inventaire_b64_global: "{{ inventaire_slurp.content | default('') }}"
     delegate_to: localhost
@@ -32,34 +32,30 @@
     run_once: true
 
   ###################################################################
-  # 1) Département du poste Windows
+  # 1) Lire et valider le département
   ###################################################################
   - name: Lire le département
     ansible.windows.win_shell: Get-Content -Path 'C:\\departement.txt'
     register: departement_raw
 
-  - name: Nettoyer le département
-    set_fact:
+  - set_fact:
       departement: "{{ departement_raw.stdout | trim }}"
 
-  - name: Vérifier département
-    fail:
+  - fail:
       msg: "Département « {{ departement }} » non reconnu"
     when: departement not in prefix_map
 
   ###################################################################
-  # 2) Construire la liste des noms existants et calculer le prochain
+  # 2) Construire la liste des lignes du .ini
   ###################################################################
-  - name: Construire la liste des lignes du fichier ini
+  - name: Initialiser inventaire_lignes à liste vide
     set_fact:
-      inventaire_lignes: >-
-        {{
-          hostvars['localhost'].inventaire_b64_global | length > 0
-          | ternary(
-              (hostvars['localhost'].inventaire_b64_global | b64decode | split('\n')),
-              []
-            )
-        }}
+      inventaire_lignes: []
+
+  - name: Décoder l'inventaire s'il existe
+    set_fact:
+      inventaire_lignes: "{{ (hostvars['localhost'].inventaire_b64_global | b64decode).split('\n') }}"
+    when: hostvars['localhost'].inventaire_b64_global | length > 0
 
   - name: Filtrer les noms existants du même département
     set_fact:
@@ -82,7 +78,7 @@
 
   - name: Prochain ID libre
     set_fact:
-      next_id: "{{ '%03d' % ((range(1, 1000) | difference(existants_ids)) | min) }}"
+      next_id: "{{ '%03d' % ((range(1,1000) | difference(existants_ids)) | min) }}"
 
   - name: Construire le nouveau nom
     set_fact:
@@ -103,7 +99,7 @@
     when: rename_result.changed
 
   ###################################################################
-  # 4) Mettre à jour l’inventaire (une seule fois, sur localhost)
+  # 4) Mettre à jour l’inventaire (localhost, une seule fois)
   ###################################################################
   - name: Mettre à jour l’inventaire
     copy:
