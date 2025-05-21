@@ -1,7 +1,6 @@
 ---
 #############################################################################
-# PLAY 1 – s’exécute uniquement sur le contrôleur (localhost)
-#          → lit / met à jour le fichier inventaire et place la variable
+# PLAY 1 – exécute UNIQUEMENT sur le contrôleur pour lire / créer le .ini
 #############################################################################
 - name: Préparer l’inventaire (contrôleur seulement)
   hosts: localhost
@@ -12,27 +11,27 @@
     inventaire_path: "/tmp/semaphore/inventaire_ad.ini"
 
   tasks:
-    - name: Charger le fichier inventaire (peut ne pas exister)
+    - name: Lire le fichier inventaire (s'il existe)
       slurp:
         src: "{{ inventaire_path }}"
       register: inventaire_slurp
-      ignore_errors: true
+      ignore_errors: true         # 1ʳᵉ exécution : fichier absent ⇒ OK
 
-    - name: Publier le contenu (base64) dans les facts de localhost
+    - name: Publier la variable pour les autres plays
       set_fact:
         inventaire_content_b64: "{{ inventaire_slurp.content | default('') }}"
 
 #############################################################################
-# PLAY 2 – s’exécute sur les PC Windows (groupe onboarding)
+# PLAY 2 – s’exécute sur les postes Windows du groupe [onboarding]
 #############################################################################
 - name: Onboarding automatique depuis fichier texte
   hosts: onboarding
   gather_facts: yes
 
   vars:
-    # <- on récupère la variable générée au play 1
-    inventaire_content_b64: "{{ hostvars['localhost'].inventaire_content_b64 }}"
     inventaire_path: "/tmp/semaphore/inventaire_ad.ini"
+    # on récupère la var du play 1
+    inventaire_content_b64: "{{ hostvars['localhost'].inventaire_content_b64 }}"
 
     prefix_map:
       IT:  "IT-LAPTOP"
@@ -41,85 +40,92 @@
       COM: "COM-LAPTOP"
 
   tasks:
-    #######################################################################
-    # 1) Département
-    #######################################################################
-    - name: Lire le département
-      ansible.windows.win_shell: Get-Content -Path 'C:\\departement.txt'
-      register: departement_raw
+  ###########################################################################
+  # 1) Lire et valider le département
+  ###########################################################################
+  - name: Lire le département
+    ansible.windows.win_shell: Get-Content -Path 'C:\\departement.txt'
+    register: departement_raw
 
-    - name: Nettoyer
-      set_fact:
-        departement: "{{ departement_raw.stdout | trim }}"
+  - name: Nettoyer
+    set_fact:
+      departement: "{{ departement_raw.stdout | trim }}"
 
-    - name: Valider
-      fail:
-        msg: "Département « {{ departement }} » non reconnu"
-      when: departement not in prefix_map
+  - name: Vérifier que le département est valide
+    fail:
+      msg: "Département « {{ departement }} » non reconnu"
+    when: departement not in prefix_map
 
-    #######################################################################
-    # 2) Calculer le prochain hostname
-    #######################################################################
-    - name: Extraire les noms connus
-      set_fact:
-        existants: >-
-          {{
-            (
-              (inventaire_content_b64 | default('') | length > 0)
-              | ternary(inventaire_content_b64 | b64decode | split('\n'), [])
+  ###########################################################################
+  # 2) Décoder le contenu du .ini (s'il existe) et calculer le prochain nom
+  ###########################################################################
+  - name: Décoder l’inventaire (ou liste vide)
+    set_fact:
+      inventaire_lignes: >-
+        {{
+          inventaire_content_b64
+          | ternary(
+              (inventaire_content_b64 | b64decode | split('\n')),
+              []
             )
-            | reject('match', '^\[.*\]')          # on ignore les sections ini
-            | reject('equalto', '')               # lignes vides
-            | map('regex_replace', '\..*$', '')   # on retire le domaine
-            | select('match', '^' ~ prefix_map[departement] ~ '-\d{3}$')
-            | list
-          }}
+        }}
 
+  - name: Filtrer les noms existants du même département
+    set_fact:
+      existants: >-
+        {{
+          inventaire_lignes
+          | reject('match', '^\[.*\]')          # supprime les sections ini
+          | reject('equalto', '')               # lignes vides
+          | map('regex_replace', '\..*$', '')   # retire le domaine
+          | select('match', '^' ~ prefix_map[departement] ~ '-\d{3}$')
+          | list
+        }}
 
-    - name: IDs déjà pris
-      set_fact:
-        existants_ids: "{{ existants | map('regex_replace','^.*-(\\d{3})$','\\1')
-                          | map('int') | list }}"
+  - name: IDs déjà pris
+    set_fact:
+      existants_ids: "{{ existants | map('regex_replace','^.*-(\\d{3})$','\\1')
+                        | map('int') | list }}"
 
-    - name: Prochain ID libre
-      set_fact:
-        next_id: "{{ '%03d' % ((range(1,1000) | difference(existants_ids)) | min) }}"
+  - name: Déterminer le prochain ID libre
+    set_fact:
+      next_id: "{{ '%03d' % ((range(1,1000) | difference(existants_ids)) | min) }}"
 
-    - name: Nouveau nom
-      set_fact:
-        new_hostname: "{{ prefix_map[departement] }}-{{ next_id }}"
+  - name: Construire le nouveau nom
+    set_fact:
+      new_hostname: "{{ prefix_map[departement] }}-{{ next_id }}"
 
-    - debug:
-        msg: "Nom à appliquer : {{ new_hostname }}"
+  - debug:
+      msg: "Nom à appliquer : {{ new_hostname }}"
 
-    #######################################################################
-    # 3) Renommer + reboot
-    #######################################################################
-    - name: Appliquer le nom
-      ansible.windows.win_hostname:
-        name: "{{ new_hostname }}"
-      register: rename_result
+  ###########################################################################
+  # 3) Renommer la machine + reboot si nécessaire
+  ###########################################################################
+  - name: Appliquer le nom
+    ansible.windows.win_hostname:
+      name: "{{ new_hostname }}"
+    register: rename_result
 
-    - ansible.windows.win_reboot:
-      when: rename_result.changed
+  - ansible.windows.win_reboot:
+    when: rename_result.changed
 
-    #######################################################################
-    # 4) Mise à jour inventaire (une seule fois, sur localhost)
-    #######################################################################
-    - name: Ajouter le nom dans l’inventaire
-      copy:
-        dest: "{{ inventaire_path }}"
-        content: |
-          [ad_computers]
-          {% for n in (existants + [new_hostname]) | unique | sort %}
-          {{ n }}.fonteynethekitchen.local
-          {% endfor %}
-      when: new_hostname not in existants
-      delegate_to: localhost
-      connection: local
-      run_once: true
+  ###########################################################################
+  # 4) Mettre à jour le fichier .ini (une seule fois, sur localhost)
+  ###########################################################################
+  - name: Mettre à jour l’inventaire
+    copy:
+      dest: "{{ inventaire_path }}"
+      content: |
+        [ad_computers]
+        {% for n in (existants + [new_hostname]) | unique | sort %}
+        {{ n }}.fonteynethekitchen.local
+        {% endfor %}
+    when: new_hostname not in existants
+    delegate_to: localhost
+    connection: local
+    run_once: true
 
-    - debug:
-        msg: "Inventaire mis à jour avec {{ new_hostname }}"
-      when: new_hostname not in existants
-      run_once: true
+  - debug:
+      msg: "Inventaire mis à jour avec {{ new_hostname }}"
+    when: new_hostname not in existants
+    run_once: true
