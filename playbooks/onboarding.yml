@@ -89,9 +89,13 @@
     set_fact:
       next_id: "{{ '%03d' % ((range(1,1000) | difference(existants_ids)) | min) }}"
 
-  - name: Construire le nouveau nom
+  # --- correctif : deux set_fact séparés -----------------------------
+  - name: Définir le nouveau hostname
     set_fact:
       new_hostname: "{{ prefix_map[departement] }}-{{ next_id }}"
+
+  - name: Construire le FQDN complet
+    set_fact:
       new_fqdn: "{{ new_hostname }}{{ fqdn_suffix }}"
 
   - debug:
