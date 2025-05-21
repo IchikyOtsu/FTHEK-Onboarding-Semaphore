@@ -30,16 +30,21 @@
       register: inventaire_slurp
       ignore_errors: yes
 
-    - name: Extraire les machines déjà listées
+    - name: Extraire les machines déjà listées (ou vide si absent)
       set_fact:
         inventaire_connu: >-
           {{
-            inventaire_slurp['content'] | default('') | b64decode | splitlines()
-            | reject('match', '^\[.*\]')  # ignore [group]
-            | reject('equalto', '')       # ignore lignes vides
-            | map('regex_replace', '\.fonteynethekitchen\.local$', '')
-            | list
+            (inventaire_slurp is defined and 'content' in inventaire_slurp)
+            | ternary(
+                inventaire_slurp.content | b64decode | splitlines()
+                | reject('match', '^\[.*\]')        # Ignore [group]
+                | reject('equalto', '')             # Ignore lignes vides
+                | map('regex_replace', '\.fonteynethekitchen\.local$', '')
+                | list,
+                []
+            )
           }}
+
 
     - name: Fusionner sans doublon
       set_fact:
