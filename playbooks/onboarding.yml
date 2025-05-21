@@ -4,15 +4,15 @@
 
   vars:
     prefix_map:
-      IT: "IT-"
-      HR: "HR-"
-      FIN: "FIN-"
-      COM: "COM-"
+      IT: "IT-LAPTOP"
+      HR: "HR-LAPTOP"
+      FIN: "FIN-LAPTOP"
+      COM: "COM-LAPTOP"
 
   tasks:
     - name: Lire le département depuis C:\departement.txt
       ansible.windows.win_shell: |
-        Get-Content -Path 'C:\departement.txt'
+        Get-Content -Path 'C:\\departement.txt'
       register: departement_raw
 
     - name: Nettoyer le département
@@ -24,9 +24,43 @@
         msg: "Département '{{ departement }}' non reconnu"
       when: departement not in prefix_map
 
-    - name: Générer le nom dynamique
+    - name: Récupérer les noms existants de l'inventaire
+      slurp:
+        src: "{{ inventaire_path }}"
+      register: inventaire_slurp
+      ignore_errors: yes
+
+    - name: Extraire les noms connus
       set_fact:
-        new_hostname: "{{ prefix_map[departement] }}{{ ansible_hostname | regex_replace('\\W+', '') | lower }}"
+        existants: >-
+          {{
+            (
+              inventaire_slurp.content | b64decode | split('\n')
+              | reject('match', '^\[.*\]')
+              | reject('equalto', '')
+              | map('regex_replace', '\\..*$', '')
+              | select('match', '^' ~ prefix_map[departement] ~ '-\\d{3}$')
+              | list
+            ) if (inventaire_slurp is defined and 'content' in inventaire_slurp) else []
+          }}
+
+    - name: Extraire les IDs déjà pris
+      set_fact:
+        existants_ids: >-
+          {{ existants | map('regex_replace', '^.*-(\\d{3})$', '\\1') | map('int') | list }}
+
+    - name: Générer le plus petit ID libre
+      set_fact:
+        next_id: >-
+          {{
+            '%03d' % (
+              (range(1, 1000) | difference(existants_ids | default([])) | min)
+            )
+          }}
+
+    - name: Générer le nom final unique
+      set_fact:
+        new_hostname: "{{ prefix_map[departement] }}-{{ next_id }}"
 
     - name: Afficher le nom généré
       debug:
@@ -37,6 +71,23 @@
         name: "{{ new_hostname }}"
       register: result
 
-    - name: Reboot si nécessaire
+    - name: Redémarrer si nécessaire
       ansible.windows.win_reboot:
       when: result.changed
+
+    - name: Mettre à jour l'inventaire si le nom n'était pas présent
+      block:
+        - name: Ajouter le nom à l'inventaire
+          copy:
+            dest: "{{ inventaire_path }}"
+            content: |
+              [ad_computers]
+              {% for name in (existants + [new_hostname]) | unique | sort %}
+              {{ name }}.fonteynethekitchen.local
+              {% endfor %}
+          when: new_hostname not in existants
+
+        - name: Confirmer l'ajout dans l'inventaire
+          debug:
+            msg: "Inventaire mis à jour avec {{ new_hostname }}"
+      when: inventaire_path is defined
