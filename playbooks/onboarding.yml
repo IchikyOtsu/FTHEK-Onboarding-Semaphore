@@ -1,93 +1,60 @@
-- name: Onboarding automatique depuis fichier texte
-  hosts: onboarding
-  gather_facts: yes
+- name: Générer un nom unique et mettre à jour l'inventaire AD
+  hosts: localhost
+  gather_facts: no
 
   vars:
-    prefix_map:
-      IT: "IT-LAPTOP"
-      HR: "HR-LAPTOP"
-      FIN: "FIN-LAPTOP"
-      COM: "COM-LAPTOP"
+    inventaire_path: /tmp/semaphore/inventaire_ad.ini
+    departement: "IT"
+    type_machine: "LAPTOP"
+    prefix: "{{ departement }}-{{ type_machine }}"
 
   tasks:
-    - name: Lire le département depuis C:\departement.txt
-      ansible.windows.win_shell: |
-        Get-Content -Path 'C:\\departement.txt'
-      register: departement_raw
-
-    - name: Nettoyer le département
-      set_fact:
-        departement: "{{ departement_raw.stdout | trim }}"
-
-    - name: Vérifier que le département est valide
-      fail:
-        msg: "Département '{{ departement }}' non reconnu"
-      when: departement not in prefix_map
-
-    - name: Récupérer les noms existants de l'inventaire
+    - name: Lire l'inventaire existant s’il existe
       slurp:
         src: "{{ inventaire_path }}"
       register: inventaire_slurp
       ignore_errors: yes
 
-    - name: Extraire les noms connus
+    - name: Extraire les noms existants
       set_fact:
-        existants: >-
+        noms_existants: >-
           {{
             (
               inventaire_slurp.content | b64decode | split('\n')
               | reject('match', '^\[.*\]')
               | reject('equalto', '')
-              | map('regex_replace', '\\..*$', '')
-              | select('match', '^' ~ prefix_map[departement] ~ '-\\d{3}$')
+              | map('regex_replace', '\.fonteynethekitchen\.local$', '')
               | list
-            ) if (inventaire_slurp is defined and 'content' in inventaire_slurp) else []
+            ) if
+            inventaire_slurp is defined and inventaire_slurp.failed is not defined and 'content' in inventaire_slurp
+            else []
           }}
+
+    - name: Extraire les noms avec ce préfixe
+      set_fact:
+        existants: "{{ noms_existants | select('match', '^' ~ prefix ~ '-\\d{3}$') | list }}"
 
     - name: Extraire les IDs déjà pris
       set_fact:
-        existants_ids: >-
-          {{ existants | map('regex_replace', '^.*-(\\d{3})$', '\\1') | map('int') | list }}
+        ids_existants: "{{ existants | map('regex_replace', '^' ~ prefix ~ '-(\\d{3})$', '\\1') | map('int') | list }}"
 
     - name: Générer le plus petit ID libre
       set_fact:
-        next_id: >-
-          {{
-            '%03d' % (
-              (range(1, 1000) | difference(existants_ids | default([])) | min)
-            )
-          }}
+        next_id: "{{ (range(1, 1000) | difference(ids_existants | default([])) | list | min) | int }}"
 
     - name: Générer le nom final unique
       set_fact:
-        new_hostname: "{{ prefix_map[departement] }}-{{ next_id }}"
+        new_hostname: "{{ prefix }}-{{ '%03d' | format(next_id) }}"
 
     - name: Afficher le nom généré
       debug:
         msg: "Nom à appliquer : {{ new_hostname }}"
 
-    - name: Appliquer le nom de machine
-      ansible.windows.win_hostname:
-        name: "{{ new_hostname }}"
-      register: result
-
-    - name: Redémarrer si nécessaire
-      ansible.windows.win_reboot:
-      when: result.changed
-
-    - name: Mettre à jour l'inventaire si le nom n'était pas présent
-      block:
-        - name: Ajouter le nom à l'inventaire
-          copy:
-            dest: "{{ inventaire_path }}"
-            content: |
-              [ad_computers]
-              {% for name in (existants + [new_hostname]) | unique | sort %}
-              {{ name }}.fonteynethekitchen.local
-              {% endfor %}
-          when: new_hostname not in existants
-
-        - name: Confirmer l'ajout dans l'inventaire
-          debug:
-            msg: "Inventaire mis à jour avec {{ new_hostname }}"
-      when: inventaire_path is defined
+    - name: Mettre à jour l'inventaire sans doublon
+      copy:
+        dest: "{{ inventaire_path }}"
+        content: |
+          [ad_computers]
+          {% for name in (noms_existants + [new_hostname]) | unique | sort %}
+          {{ name }}.fonteynethekitchen.local
+          {% endfor %}
