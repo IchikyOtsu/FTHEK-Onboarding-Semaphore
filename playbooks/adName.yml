@@ -1,0 +1,27 @@
+- name: Générer un nom unique non utilisé dans l'Active Directory
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: Récupérer les noms de machines existants dans l'AD
+      shell: |
+        ldapsearch -x -H "{{ ldap_server }}" -D "{{ ldap_user }}" -w "{{ ldap_password }}" \
+        -b "{{ ldap_base }}" "(objectClass=computer)" name | grep ^name: | awk '{print $2}'
+      register: ad_names_raw
+
+    - name: Stocker les noms existants dans une liste
+      set_fact:
+        noms_existants: "{{ ad_names_raw.stdout_lines }}"
+
+    - name: Générer le prochain nom disponible
+      set_fact:
+        new_hostname: "{{ departement }}-{{ type_machine }}-{{ '%03d' | format(item) }}"
+      loop: "{{ range(1, 999) }}"
+      when: (departement + '-' + type_machine + '-' + ('%03d' | format(item))) not in noms_existants
+      register: loop_result
+      until: loop_result is succeeded
+      retries: 1000
+      delay: 0
+
+    - name: Afficher le nom disponible trouvé
+      debug:
+        msg: "Nom disponible trouvé : {{ new_hostname }}"
