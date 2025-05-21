@@ -5,6 +5,7 @@
 
   vars:
     inventaire_path: "/tmp/semaphore/inventaire_ad.ini"
+    fqdn_suffix: ".fonteynethekitchen.local"
 
     prefix_map:
       IT:  "IT-LAPTOP"
@@ -46,9 +47,9 @@
     when: departement not in prefix_map
 
   ###################################################################
-  # 2) Construire la liste des lignes du .ini
+  # 2) Construire la liste des lignes du .ini et calculer le prochain nom
   ###################################################################
-  - name: Initialiser inventaire_lignes à liste vide
+  - name: Mettre inventaire_lignes à liste vide
     set_fact:
       inventaire_lignes: []
 
@@ -57,21 +58,29 @@
       inventaire_lignes: "{{ (hostvars['localhost'].inventaire_b64_global | b64decode).split('\n') }}"
     when: hostvars['localhost'].inventaire_b64_global | length > 0
 
-  - name: Filtrer les noms existants du même département
+  - name: Toutes les lignes hostnames
     set_fact:
-      existants: >-
+      inventaire_hostnames: >-
         {{
           inventaire_lignes
           | reject('match', '^\\[.*\\]')
           | reject('equalto', '')
+          | list
+        }}
+
+  - name: Noms existants du même département
+    set_fact:
+      existants_dep: >-
+        {{
+          inventaire_hostnames
           | map('regex_replace', '\\..*$', '')
           | select('match', '^' ~ prefix_map[departement] ~ '-\\d{3}$')
           | list
         }}
 
-  - name: IDs déjà pris
+  - name: IDs déjà pris (dans ce département)
     set_fact:
-      existants_ids: "{{ existants
+      existants_ids: "{{ existants_dep
                         | map('regex_replace', '^.*-(\\d{3})$', '\\1')
                         | map('int')
                         | list }}"
@@ -83,14 +92,15 @@
   - name: Construire le nouveau nom
     set_fact:
       new_hostname: "{{ prefix_map[departement] }}-{{ next_id }}"
+      new_fqdn: "{{ new_hostname }}{{ fqdn_suffix }}"
 
   - debug:
       msg: "Nom à appliquer : {{ new_hostname }}"
 
   ###################################################################
-  # 3) Renommer + reboot
+  # 3) Renommer le PC Windows + reboot
   ###################################################################
-  - name: Appliquer le nom de machine
+  - name: Appliquer le nom
     ansible.windows.win_hostname:
       name: "{{ new_hostname }}"
     register: rename_result
@@ -99,22 +109,30 @@
     when: rename_result.changed
 
   ###################################################################
-  # 4) Mettre à jour l’inventaire (localhost, une seule fois)
+  # 4) Ajouter la ligne dans l’inventaire (si absente)
   ###################################################################
-  - name: Mettre à jour l’inventaire
-    copy:
-      dest: "{{ inventaire_path }}"
-      content: |
-        [ad_computers]
-        {% for n in (existants + [new_hostname]) | unique | sort %}
-        {{ n }}.fonteynethekitchen.local
-        {% endfor %}
-    when: new_hostname not in existants
+  - name: S’assurer que la section [ad_computers] existe
+    lineinfile:
+      path: "{{ inventaire_path }}"
+      line: "[ad_computers]"
+      state: present
+      create: yes
+    delegate_to: localhost
+    connection: local
+    run_once: true
+
+  - name: Ajouter le FQDN dans l’inventaire
+    lineinfile:
+      path: "{{ inventaire_path }}"
+      line: "{{ new_fqdn }}"
+      insertafter: "^\\[ad_computers\\]$"
+      state: present
+    when: new_fqdn not in inventaire_hostnames
     delegate_to: localhost
     connection: local
     run_once: true
 
   - debug:
-      msg: "Inventaire mis à jour avec {{ new_hostname }}"
-    when: new_hostname not in existants
+      msg: "Inventaire mis à jour avec {{ new_fqdn }}"
+    when: new_fqdn not in inventaire_hostnames
     run_once: true
