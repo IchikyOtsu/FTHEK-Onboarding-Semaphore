@@ -1,17 +1,6 @@
 - name: Onboarding - Générer nom et créer inventaire AD
   hosts: localhost
   gather_facts: no
-
-  vars:
-    ldap_server: "ldap://192.168.10.4"
-    ldap_user: "ansible@fonteynethekitchen.local"
-    ldap_password: "motdepasse"
-    ldap_base: "dc=fonteynethekitchen,dc=local"
-
-    departement: "IT"
-    type_machine: "LAPTOP"
-    inventaire_path: "./inventaire_ad.ini"
-
   tasks:
     - name: Interroger l'AD pour obtenir les noms d'ordinateurs
       shell: |
