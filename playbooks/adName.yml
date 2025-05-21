@@ -29,19 +29,24 @@
         src: "{{ inventaire_path }}"
       register: inventaire_slurp
       ignore_errors: yes
-
     - name: Extraire les machines déjà listées (ou vide si fichier manquant)
       set_fact:
         inventaire_connu: >-
           {{
-            (inventaire_slurp.content | b64decode | splitlines()
-            | reject('match', '^\[.*\]')
-            | reject('equalto', '')
-            | map('regex_replace', '\.fonteynethekitchen\.local$', '')
-            | list)
-            if (inventaire_slurp is defined and inventaire_slurp.failed is not defined and 'content' in inventaire_slurp)
-            else []
+            (
+              inventaire_slurp.content | b64decode | split('\n')
+              | reject('match', '^\[.*\]')
+              | reject('equalto', '')
+              | map('regex_replace', '\.fonteynethekitchen\.local$', '')
+              | list
+            )
+            if (
+              inventaire_slurp is defined and
+              inventaire_slurp.failed is not defined and
+              'content' in inventaire_slurp
+            ) else []
           }}
+
 
 
 
