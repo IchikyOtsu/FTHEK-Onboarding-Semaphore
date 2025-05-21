@@ -5,10 +5,10 @@
   tasks:
     - name: Voir la sortie brute de ldapsearch
       shell: >
-        ldapsearch -x -H ldap://192.168.10.4
-        -D "Administrateur@fonteynethekitchen.local"
-        -w "motdepasse"
-        -b "OU=Bureau Computers,DC=fonteynethekitchen,DC=local"
+        ldapsearch -x -H "{{ ldap_server }}"
+        -D "{{ ldap_user }}"
+        -w "{{ ldap_password }}"
+        -b "{{ ldap_base }}"
         "(objectClass=computer)"
         name
       register: ldap_raw
