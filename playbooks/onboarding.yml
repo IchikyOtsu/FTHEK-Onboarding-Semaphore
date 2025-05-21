@@ -1,3 +1,4 @@
+---
 - name: Onboarding automatique depuis fichier texte
   hosts: onboarding
   gather_facts: yes
@@ -11,11 +12,10 @@
 
   tasks:
     # ------------------------------------------------------------------
-    # 1) Quel est le département du poste Windows ?
+    # 1) Lire et valider le département stocké sur le PC Windows
     # ------------------------------------------------------------------
     - name: Lire le département depuis C:\departement.txt
-      ansible.windows.win_shell: |
-        Get-Content -Path 'C:\\departement.txt'
+      ansible.windows.win_shell: Get-Content -Path 'C:\\departement.txt'
       register: departement_raw
 
     - name: Nettoyer le département
@@ -28,33 +28,26 @@
       when: departement not in prefix_map
 
     # ------------------------------------------------------------------
-    # 2) Obtenir les noms déjà utilisés (depuis l’inventaire local)
+    # 2) Lire l’inventaire (fichier local) et calculer le prochain ID
     # ------------------------------------------------------------------
     - name: Récupérer le fichier d’inventaire
       slurp:
         src: "{{ inventaire_path }}"
       register: inventaire_slurp
-      ignore_errors: yes
+      ignore_errors: yes            # 1ère exécution : fichier absent = OK
       delegate_to: localhost
-      connection: local        # ← ← ICI
-      run_once: true
-    
-    - name: Partager le contenu à tous les hôtes
-      set_fact:
-        inventaire_content_b64: "{{ inventaire_slurp.content | default('') }}"
-      delegate_facts: true        # diffuse la variable dans hostvars
-      delegate_to: localhost
-      run_once: true
+      connection: local
 
     - name: Extraire les noms connus pour ce département
       set_fact:
+        inventaire_content_b64: "{{ inventaire_slurp.content | default('') }}"
         existants: >-
           {{
             inventaire_content_b64
             | b64decode | split('\n')
-            | reject('match', '^\[.*\]')     # on ignore les sections ini
+            | reject('match', '^\[.*\]')       # on ignore les sections .ini
             | reject('equalto', '')
-            | map('regex_replace', '\\..*$', '')
+            | map('regex_replace', '\\..*$', '')    # on enlève le domaine
             | select('match', '^' ~ prefix_map[departement] ~ '-\\d{3}$')
             | list
           }}
@@ -63,11 +56,11 @@
       set_fact:
         existants_ids: "{{ existants | map('regex_replace', '^.*-(\\d{3})$', '\\1') | map('int') | list }}"
 
-    - name: Plus petit ID libre (1-999)
+    - name: Générer le plus petit ID libre
       set_fact:
         next_id: "{{ '%03d' % ((range(1, 1000) | difference(existants_ids)) | min) }}"
 
-    - name: Nom final unique
+    - name: Construire le nouveau nom d’hôte
       set_fact:
         new_hostname: "{{ prefix_map[departement] }}-{{ next_id }}"
 
@@ -75,7 +68,7 @@
         msg: "Nom à appliquer : {{ new_hostname }}"
 
     # ------------------------------------------------------------------
-    # 3) Renommer le poste, puis redémarrer si besoin
+    # 3) Renommer la machine Windows + reboot si besoin
     # ------------------------------------------------------------------
     - name: Appliquer le nom de machine
       ansible.windows.win_hostname:
@@ -87,9 +80,9 @@
       when: result.changed
 
     # ------------------------------------------------------------------
-    # 4) Mettre à jour l’inventaire (toujours sur localhost, une seule fois)
+    # 4) Mettre à jour l’inventaire (sur le nœud de contrôle, une seule fois)
     # ------------------------------------------------------------------
-    - name: Ajouter le nom à l'inventaire
+    - name: Ajouter/le nom à l'inventaire
       copy:
         dest: "{{ inventaire_path }}"
         content: |
@@ -101,12 +94,13 @@
         - inventaire_path is defined
         - new_hostname not in existants
       delegate_to: localhost
-      connection: local        # ← ← ICI
-      run_once: true
+      connection: local
+      run_once: true                # une seule mise à jour suffit
 
-    - name: Confirmation
+    - name: Confirmation inventaire
       debug:
         msg: "Inventaire mis à jour avec {{ new_hostname }}"
       when:
         - inventaire_path is defined
         - new_hostname not in existants
+      run_once: true
