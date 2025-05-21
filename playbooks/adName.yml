@@ -15,13 +15,21 @@
       set_fact:
         prefix: "{{ departement }}-{{ type_machine }}"
         
-    - name: Générer contenu de l'inventaire
+    - name: Générer contenu de l'inventaire Ansible depuis AD
       copy:
         dest: "{{ inventaire_path }}"
         content: |
           [ad_computers]
           {% for name in noms_machines_ad %}
           {{ name }}.fonteynethekitchen.local
+          {% endfor %}
+
+    - name: Afficher les machines trouvées dans l'AD
+      debug:
+        msg: |
+          Machines détectées dans l'AD :
+          {% for name in noms_machines_ad %}
+          - {{ name }}.fonteynethekitchen.local
           {% endfor %}
 
     - name: Filtrer les noms déjà utilisés pour ce type/département
