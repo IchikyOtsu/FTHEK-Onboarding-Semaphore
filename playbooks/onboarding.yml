@@ -6,7 +6,6 @@
   vars:
     inventaire_path: "/tmp/semaphore/inventaire_ad.ini"
     fqdn_suffix: ".fonteynethekitchen.local"
-
     prefix_map:
       IT:  "IT-LAPTOP"
       HR:  "HR-LAPTOP"
@@ -15,19 +14,19 @@
 
   tasks:
   ###################################################################
-  # 0) Lire le fichier inventaire UNE fois sur le contrôleur
+  # 0) Lire l’inventaire UNE seule fois sur le contrôleur
   ###################################################################
-  - name: Lire le contenu du fichier (vide si absent)
+  - name: Lire le contenu de l’inventaire (vide si absent)
     set_fact:
       inventaire_txt: "{{ lookup('file', inventaire_path, errors='ignore') | default('') }}"
     delegate_to: localhost
-    delegate_facts: true
+    delegate_facts: true        # ← rend la variable visible à tous
     run_once: true
     vars:
-      ansible_connection: local          # force la connexion locale
+      ansible_connection: local
 
   ###################################################################
-  # 1) Département
+  # 1) Département du poste Windows
   ###################################################################
   - name: Lire le département
     ansible.windows.win_shell: Get-Content -Path 'C:\\departement.txt'
@@ -41,31 +40,21 @@
     when: departement not in prefix_map
 
   ###################################################################
-  # 2) Construire la liste des hostnames existants
+  # 2) Hostnames existants et calcul du prochain
   ###################################################################
-  - name: Mettre inventaire_lignes à liste vide
-    set_fact:
-      inventaire_lignes: []
-  
-  - name: Décoder l'inventaire s'il existe
-    set_fact:
-      inventaire_lignes: "{{ (hostvars['localhost'].inventaire_b64_global | b64decode).split('\n') }}"
-    when: hostvars['localhost'].inventaire_b64_global | length > 0
-  
-  - name: Hostnames déjà dans l’inventaire           # ← ICI
+  - name: Lignes déjà présentes dans l’inventaire
     set_fact:
       inventaire_hostnames: "{{ hostvars['localhost'].inventaire_txt.splitlines()
                                 | reject('match', '^\\s*\\[.*\\]')
                                 | reject('equalto', '')
                                 | list }}"
-  
+
   - name: Hostnames du même département
     set_fact:
       existants_dep: "{{ inventaire_hostnames
                         | map('regex_replace', '\\..*$', '')
                         | select('match', '^' ~ prefix_map[departement] ~ '-\\d{3}$')
                         | list }}"
-
 
   - name: IDs déjà pris
     set_fact:
@@ -74,7 +63,7 @@
                         | map('int')
                         | list }}"
 
-  - name: Trouver le plus petit ID libre
+  - name: Plus petit ID libre
     set_fact:
       next_id: "{{ '%03d' % ((range(1,1000) | difference(existants_ids)) | min) }}"
 
@@ -87,7 +76,7 @@
       msg: "→ Nom choisi : {{ new_hostname }}"
 
   ###################################################################
-  # 3) Renommer le poste + reboot si besoin
+  # 3) Renommer le poste + reboot si nécessaire
   ###################################################################
   - name: Appliquer le nouveau nom
     ansible.windows.win_hostname:
@@ -100,7 +89,7 @@
   ###################################################################
   # 4) Ajouter la ligne dans l’inventaire (si absente)
   ###################################################################
-  - name: Créer la section [ad_computers] si besoin
+  - name: Créer la section [ad_computers] si nécessaire
     lineinfile:
       path: "{{ inventaire_path }}"
       line: "[ad_computers]"
@@ -110,7 +99,7 @@
     connection: local
     run_once: true
 
-  - name: Ajouter le FQDN uniquement s'il n'existe pas
+  - name: Ajouter le FQDN uniquement s’il n’existe pas
     lineinfile:
       path: "{{ inventaire_path }}"
       line: "{{ new_fqdn }}"
