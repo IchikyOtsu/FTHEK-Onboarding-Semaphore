@@ -1,37 +1,42 @@
-- name: Onboard poste Windows
+- name: Onboarding automatique depuis fichier texte
   hosts: onboarding
   gather_facts: yes
-
-  tasks:
-    - name: Début du playbook
-      debug:
-        msg: "Playbook lancé correctement"
-
-  vars_prompt:
-    - name: departement
-      prompt: "Département (ex: IT, HR, FIN)"
-      private: no
 
   vars:
     prefix_map:
       IT: "IT-"
       HR: "HR-"
       FIN: "FIN-"
+      COM: "COM-"
 
   tasks:
+    - name: Lire le département depuis C:\departement.txt
+      ansible.windows.win_shell: |
+        Get-Content -Path 'C:\departement.txt'
+      register: departement_raw
+
+    - name: Nettoyer le département
+      set_fact:
+        departement: "{{ departement_raw.stdout | trim }}"
+
+    - name: Vérifier que le département est valide
+      fail:
+        msg: "Département '{{ departement }}' non reconnu"
+      when: departement not in prefix_map
+
     - name: Générer le nom dynamique
       set_fact:
         new_hostname: "{{ prefix_map[departement] }}{{ ansible_hostname | regex_replace('\\W+', '') | lower }}"
 
-    - name: Afficher le nom qui sera appliqué
+    - name: Afficher le nom généré
       debug:
-        msg: "Nom d'hôte à appliquer : {{ new_hostname }}"
+        msg: "Nom à appliquer : {{ new_hostname }}"
 
-    - name: Renommer la machine
+    - name: Appliquer le nom de machine
       ansible.windows.win_hostname:
         name: "{{ new_hostname }}"
-      register: rename_result
+      register: result
 
-    - name: Reboot si renommage effectué
+    - name: Reboot si nécessaire
       ansible.windows.win_reboot:
-      when: rename_result.changed
+      when: result.changed
