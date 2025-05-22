@@ -2,15 +2,26 @@
 - name: Onboarding automatique depuis fichier texte
   hosts: onboarding
   gather_facts: yes
-
   vars:
     inventaire_path: "/tmp/semaphore/inventaire_ad.ini"
     fqdn_suffix: ".fonteynethekitchen.local"
     prefix_map:
-      IT:  "IT-LAPTOP"
-      HR:  "HR-LAPTOP"
-      FIN: "FIN-LAPTOP"
-      COM: "COM-LAPTOP"
+      Achat:                    "ACH-LAPTOP"
+      Comptabilité:             "COMPT-LAPTOP"
+      Direction:                "DIR-LAPTOP"
+      Facility:                 "FAC-LAPTOP"
+      Finance:                  "FIN-LAPTOP"
+      Formation:                "FOR-LAPTOP"
+      IT:                       "IT-LAPTOP"
+      Livraison:                "LIV-LAPTOP"
+      Marketing:                "MKT-LAPTOP"
+      Production:               "PROD-LAPTOP"
+      "Qualité":                "QUAL-LAPTOP"
+      "Responsable Production": "RESP-LAPTOP"
+      "Student/Stagiaire":      "STG-LAPTOP"
+      Testing:                  "TST-LAPTOP"
+      Vente:                    "VNT-LAPTOP"
+
 
   tasks:
   ###################################################################
