@@ -6,8 +6,7 @@
   hosts: onboarding
   gather_facts: yes
   collections:
-    - ansible.windows            # ← win_shell, win_hostname, win_chocolatey
-    - community.windows          # ← win_reboot
+    - ansible.windows            # win_shell, win_hostname, win_chocolatey, win_reboot
 
   vars:
     inventaire_path: "/tmp/semaphore/inventaire_ad.ini"
@@ -47,126 +46,120 @@
       Testing: [postman]
       Vente: [slack]
 
+  ###################################################################
+  # 0) Charger l’inventaire (une seule fois)
+  ###################################################################
   tasks:
-  ###################################################################
-  # 0) Charger l’inventaire (une seule fois) et le rendre accessible
-  ###################################################################
-  - name: Lire le fichier inventaire (vide si absent)
-    set_fact:
-      inventaire_txt: "{{ lookup('file', inventaire_path, errors='ignore') | default('') }}"
-    delegate_to: localhost
-    delegate_facts: true
-    run_once: true
-    vars:
-      ansible_connection: local
+    - name: Lire le fichier inventaire (vide si absent)
+      set_fact:
+        inventaire_txt: "{{ lookup('file', inventaire_path, errors='ignore') | default('') }}"
+      delegate_to: localhost
+      delegate_facts: true
+      run_once: true
+      vars:
+        ansible_connection: local
 
   ###################################################################
-  # 1) Identifier le département
+  # 1) Département
   ###################################################################
-  - name: Lire le département depuis C:\departement.txt
-    ansible.windows.win_shell: Get-Content -Path 'C:\\departement.txt'
-    register: departement_raw
+    - name: Lire le département
+      ansible.windows.win_shell: Get-Content -Path 'C:\\departement.txt'
+      register: departement_raw
 
-  - name: Nettoyer la valeur lue
-    set_fact:
-      departement: "{{ departement_raw.stdout | trim }}"
+    - set_fact:
+        departement: "{{ departement_raw.stdout | trim }}"
 
-  - name: Vérifier la présence du département dans prefix_map
-    fail:
-      msg: "Département « {{ departement }} » non reconnu dans prefix_map"
-    when: departement not in prefix_map
+    - fail:
+        msg: "Département « {{ departement }} » non reconnu"
+      when: departement not in prefix_map
 
   ###################################################################
-  # 2) Calculer le prochain hostname disponible
+  # 2) Calcul du prochain hostname
   ###################################################################
-  - name: Lignes déjà dans l’inventaire
-    set_fact:
-      inventaire_hostnames: "{{ hostvars['localhost'].inventaire_txt.splitlines()
-                                | reject('match', '^\\s*\\[.*\\]')
-                                | reject('equalto', '')
-                                | list }}"
+    - name: Lignes déjà présentes
+      set_fact:
+        inventaire_hostnames: "{{ hostvars['localhost'].inventaire_txt.splitlines()
+                                  | reject('match', '^\\s*\\[.*\\]')
+                                  | reject('equalto', '')
+                                  | list }}"
 
-  - name: Hostnames de ce département
-    set_fact:
-      existants_dep: "{{ inventaire_hostnames
-                        | map('regex_replace', '\\..*$', '')
-                        | select('match', '^' ~ prefix_map[departement] ~ '-\\d{3}$')
-                        | list }}"
+    - name: Noms du même département
+      set_fact:
+        existants_dep: "{{ inventaire_hostnames
+                          | map('regex_replace', '\\..*$', '')
+                          | select('match', '^' ~ prefix_map[departement] ~ '-\\d{3}$')
+                          | list }}"
 
-  - name: IDs déjà pris
-    set_fact:
-      existants_ids: "{{ existants_dep
-                        | map('regex_replace', '^.*-(\\d{3})$', '\\1')
-                        | map('int')
-                        | list }}"
+    - name: IDs déjà pris
+      set_fact:
+        existants_ids: "{{ existants_dep
+                          | map('regex_replace', '^.*-(\\d{3})$', '\\1')
+                          | map('int')
+                          | list }}"
 
-  - name: Choisir le plus petit ID libre
-    set_fact:
-      next_id: "{{ '%03d' % ((range(1,1000) | difference(existants_ids)) | min) }}"
+    - set_fact:
+        next_id: "{{ '%03d' % ((range(1,1000) | difference(existants_ids)) | min) }}"
+        new_hostname: "{{ prefix_map[departement] }}-{{ next_id }}"
+        new_fqdn: "{{ prefix_map[departement] }}-{{ next_id }}{{ fqdn_suffix }}"
 
-  - name: Définir le hostname et le FQDN
-    set_fact:
-      new_hostname: "{{ prefix_map[departement] }}-{{ next_id }}"
-      new_fqdn: "{{ prefix_map[departement] }}-{{ next_id }}{{ fqdn_suffix }}"
-
-  - debug:
-      msg: "→ Nouveau nom choisi : {{ new_hostname }}"
+    - debug:
+        msg: "→ Nouveau nom : {{ new_hostname }}"
 
   ###################################################################
-  # 3) Renommer le poste + reboot si besoin
+  # 3) Renommer + reboot
   ###################################################################
-  - name: Appliquer le nouveau nom
-    ansible.windows.win_hostname:
-      name: "{{ new_hostname }}"
-    register: rename_result
+    - name: Appliquer le nouveau nom
+      ansible.windows.win_hostname:
+        name: "{{ new_hostname }}"
+      register: rename_result
 
-  - name: Redémarrer si renommé
-    community.windows.win_reboot:
-    when: rename_result.changed
-
-  ###################################################################
-  # 4) Installer les logiciels du département
-  ###################################################################
-  - name: Récupérer la liste des paquets
-    set_fact:
-      sw_list: "{{ software_map.get(departement, []) }}"
-
-  - name: Assurer que Chocolatey est installé
-    ansible.windows.win_chocolatey:
-      state: present
-
-  - name: Installer les paquets du département
-    ansible.windows.win_chocolatey:
-      name: "{{ item }}"
-      state: present
-    loop: "{{ sw_list }}"
-    when: sw_list | length > 0
+    - name: Redémarrer si le nom a changé
+      ansible.windows.win_reboot:
+      when: rename_result.changed
 
   ###################################################################
-  # 5) Ajouter le FQDN dans l’inventaire (si absent)
+  # 4) Installation des logiciels
   ###################################################################
-  - name: Créer la section [ad_computers] s'il le faut
-    lineinfile:
-      path: "{{ inventaire_path }}"
-      line: "[ad_computers]"
-      state: present
-      create: yes
-    delegate_to: localhost
-    connection: local
-    run_once: true
+    - name: Liste des paquets à installer
+      set_fact:
+        sw_list: "{{ software_map.get(departement, []) }}"
 
-  - name: Ajouter la ligne pour ce poste
-    lineinfile:
-      path: "{{ inventaire_path }}"
-      line: "{{ new_fqdn }}"
-      insertafter: "^\\[ad_computers\\]$"
-      state: present
-    when: new_fqdn not in inventaire_hostnames
-    delegate_to: localhost
-    connection: local
-    run_once: true
+    - name: Installer Chocolatey
+      ansible.windows.win_chocolatey:
+        state: present
 
-  - debug:
-      msg: "Inventaire mis à jour avec {{ new_fqdn }}"
-    when: new_fqdn not in inventaire_hostnames
-    run_once: true
+    - name: Installer les logiciels du département
+      ansible.windows.win_chocolatey:
+        name: "{{ item }}"
+        state: present
+      loop: "{{ sw_list }}"
+      when: sw_list | length > 0
+
+  ###################################################################
+  # 5) Mise à jour de l'inventaire
+  ###################################################################
+    - name: S’assurer de la section [ad_computers]
+      lineinfile:
+        path: "{{ inventaire_path }}"
+        line: "[ad_computers]"
+        state: present
+        create: yes
+      delegate_to: localhost
+      connection: local
+      run_once: true
+
+    - name: Ajouter le FQDN si absent
+      lineinfile:
+        path: "{{ inventaire_path }}"
+        line: "{{ new_fqdn }}"
+        insertafter: "^\\[ad_computers\\]$"
+        state: present
+      when: new_fqdn not in inventaire_hostnames
+      delegate_to: localhost
+      connection: local
+      run_once: true
+
+    - debug:
+        msg: "Inventaire mis à jour avec {{ new_fqdn }}"
+      when: new_fqdn not in inventaire_hostnames
+      run_once: true
