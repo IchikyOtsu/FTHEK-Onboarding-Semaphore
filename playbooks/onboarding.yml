@@ -6,7 +6,8 @@
   hosts: onboarding
   gather_facts: yes
   collections:
-    - ansible.windows            # win_shell, win_hostname, win_chocolatey, win_reboot
+    - ansible.windows
+    - community.windows
 
   vars:
     inventaire_path: "/tmp/semaphore/inventaire_ad.ini"
