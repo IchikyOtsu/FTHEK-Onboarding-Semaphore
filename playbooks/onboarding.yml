@@ -107,7 +107,7 @@
     - name: Build new host identifiers
       set_fact:
         new_hostname: "{{ prefix_map[departement] }}-{{ next_id }}"
-        new_fqdn: "{{ new_hostname }}{{ fqdn_suffix }}"
+        new_fqdn: "{{ prefix_map[departement] }}-{{ next_id }}{{ fqdn_suffix }}"
 
     - debug:
         msg: "→ Nouveau nom : {{ new_hostname }}"
@@ -134,14 +134,13 @@
     - name: Installer Chocolatey
       win_chocolatey:
         name: chocolatey
-        state: present
 
-    - name: Installer applications spécifiques selon département
+    - name: Installer les paquets
       win_chocolatey:
         name: "{{ item }}"
         state: present
-      loop: "{{ apps_par_departement[departement] | default([]) }}"
-
+      loop: "{{ sw_list }}"
+      when: sw_list | length > 0
 
   ###################################################################
   # 5) Mise à jour de l'inventaire
