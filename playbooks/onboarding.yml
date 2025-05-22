@@ -98,10 +98,16 @@
                           | map('int')
                           | list }}"
 
-    - set_fact:
-        next_id: "{{ '%03d' % ((range(1,1000) | difference(existants_ids)) | min) }}"
+    # 1️⃣ compute the number only
+    - name: Compute next_id
+      set_fact:
+        next_id: "{{ '%03d' % ((range(1, 1000) | difference(existants_ids)) | min) }}"
+    
+    # 2️⃣ build the derived strings that depend on it
+    - name: Build new host identifiers
+      set_fact:
         new_hostname: "{{ prefix_map[departement] }}-{{ next_id }}"
-        new_fqdn: "{{ prefix_map[departement] }}-{{ next_id }}{{ fqdn_suffix }}"
+        new_fqdn: "{{ new_hostname }}{{ fqdn_suffix }}"
 
     - debug:
         msg: "→ Nouveau nom : {{ new_hostname }}"
