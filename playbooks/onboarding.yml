@@ -126,15 +126,16 @@
         sw_list: "{{ software_map.get(departement, []) }}"
 
     - name: Installer Chocolatey
-      ansible.windows.win_chocolatey:
+      win_chocolatey:
+        name: chocolatey
         state: present
 
-    - name: Installer les logiciels du département
-      ansible.windows.win_chocolatey:
+    - name: Installer applications spécifiques selon département
+      win_chocolatey:
         name: "{{ item }}"
         state: present
-      loop: "{{ sw_list }}"
-      when: sw_list | length > 0
+      loop: "{{ apps_par_departement[departement] | default([]) }}"
+
 
   ###################################################################
   # 5) Mise à jour de l'inventaire
