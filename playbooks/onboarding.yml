@@ -31,21 +31,26 @@
       Vente:                    "VNT-LAPTOP"
 
     software_map:
-      Achat: [7zip, googlechrome]
-      Comptabilité: [adobeacrobatreader, excelviewer]
-      Direction: [microsoft-edge]
-      Facility: []
-      Finance: [powerbi]
-      Formation: [vlc]
-      IT: [vscode, git, putty]
-      Livraison: [anydesk]
-      Marketing: [gimp, inkscape]
-      Production: [winscp]
-      "Qualité": [notepadplusplus]
-      "Responsable Production": []
-      "Student/Stagiaire": [libreoffice-fresh]
-      Testing: [postman]
-      Vente: [slack]
+      Achat: [googlechrome, opera, firefox, notepadplusplus, 7zip, greenshot, 1password, vlc, zoom, microsoft-teams]
+      Comptabilité: [googlechrome, opera, firefox, notepadplusplus, 7zip, greenshot, 1password, vlc, zoom, microsoft-teams]
+      Direction: [googlechrome, opera, firefox, notepadplusplus, 7zip, greenshot, 1password, vlc, zoom, microsoft-teams]
+      Facility: [googlechrome, opera, firefox, notepadplusplus, 7zip, greenshot, 1password, vlc, zoom, microsoft-teams]
+      Finance: [googlechrome, opera, firefox, notepadplusplus, 7zip, greenshot, 1password, vlc, zoom, microsoft-teams]
+      Formation: [googlechrome, opera, firefox, notepadplusplus, 7zip, greenshot, 1password, vlc, zoom, microsoft-teams]
+      IT: [teamviewer, mobaxterm, notepadplusplus, visualstudio, googlechrome, opera, firefox,
+           virtualbox, putty, filezilla, 7zip, winrar, git, greenshot, discord, openvpn, googledrive,
+           angryip, advanced-ip-scanner, digifresh, synology-surveillance-station, uisp, 1password,
+           balenaetcher, rufus, obs-studio, shotcut, foxitreader, keepass, vlc, zoom, microsoft-teams,
+           loom, libreoffice-fresh, python, sadp]
+      Livraison: [googlechrome, opera, firefox, notepadplusplus, 7zip, greenshot, 1password, vlc, zoom, microsoft-teams]
+      Marketing: [googlechrome, opera, firefox, notepadplusplus, 7zip, greenshot, 1password, vlc, zoom, microsoft-teams]
+      Production: [googlechrome, opera, firefox, notepadplusplus, 7zip, greenshot, 1password, vlc, zoom, microsoft-teams]
+      "Qualité": [googlechrome, opera, firefox, notepadplusplus, 7zip, greenshot, 1password, vlc, zoom, microsoft-teams]
+      "Responsable Production": [googlechrome, opera, firefox, notepadplusplus, 7zip, greenshot, 1password, vlc, zoom, microsoft-teams]
+      "Student/Stagiaire": [googlechrome, opera, firefox, notepadplusplus, 7zip, greenshot, 1password, vlc, zoom, microsoft-teams]
+      Testing: [googlechrome, opera, firefox, notepadplusplus, 7zip, greenshot, 1password, vlc, zoom, microsoft-teams]
+      Vente: [googlechrome, opera, firefox, notepadplusplus, 7zip, greenshot, 1password, vlc, zoom, microsoft-teams]
+
 
   ###################################################################
   # 0) Charger l’inventaire (une seule fois)
