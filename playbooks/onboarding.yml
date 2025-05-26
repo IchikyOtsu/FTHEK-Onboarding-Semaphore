@@ -183,6 +183,7 @@
         domain_admin_password: "{{ ldap_password }}"
         domain_ou_path: "{{ target_ou }}"
         hostname: "{{ ansible_hostname }}"
+        state: "domain"
       register: domain_join
     
     - name: Redémarrer si nécessaire (join domaine)
