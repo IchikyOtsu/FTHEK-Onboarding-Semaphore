@@ -37,9 +37,7 @@
       Facility: [googlechrome, opera, firefox, notepadplusplus, 7zip, greenshot, 1password, vlc, zoom, microsoft-teams]
       Finance: [googlechrome, opera, firefox, notepadplusplus, 7zip, greenshot, 1password, vlc, zoom, microsoft-teams]
       Formation: [googlechrome, opera, firefox, notepadplusplus, 7zip, greenshot, 1password, vlc, zoom, microsoft-teams]
-      IT: [teamviewer, mobaxterm, notepadplusplus, vscode, googlechrome, opera, firefox,
-           virtualbox, putty, filezilla, 7zip, winrar, git, greenshot, discord, openvpn, googledrive,
-           angryip, advanced-ip-scanner, 1password, rufus, obs-studio, shotcut, foxitreader, keepass, vlc, zoom, microsoft-teams, libreoffice-fresh, python, sadp]
+      IT: [teamviewer]
       Livraison: [googlechrome, opera, firefox, notepadplusplus, 7zip, greenshot, 1password, vlc, zoom, microsoft-teams]
       Marketing: [googlechrome, opera, firefox, notepadplusplus, 7zip, greenshot, 1password, vlc, zoom, microsoft-teams]
       Production: [googlechrome, opera, firefox, notepadplusplus, 7zip, greenshot, 1password, vlc, zoom, microsoft-teams]
