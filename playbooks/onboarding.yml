@@ -1,6 +1,6 @@
 ---
 #############################################################################
-# Onboarding poste Windows : renommage + logiciels + inventaire AD
+# Onboarding poste Windows : renommage + logiciels + inventaire AD + join
 #############################################################################
 - name: Onboarding automatique poste Windows
   hosts: onboarding
@@ -47,11 +47,8 @@
       Testing: [googlechrome, opera, firefox, notepadplusplus, 7zip, greenshot, 1password, vlc, zoom, microsoft-teams]
       Vente: [googlechrome, opera, firefox, notepadplusplus, 7zip, greenshot, 1password, vlc, zoom, microsoft-teams]
 
-
-  ###################################################################
-  # 0) Charger l’inventaire (une seule fois)
-  ###################################################################
   tasks:
+    # 0) Lire l'inventaire
     - name: Lire le fichier inventaire (vide si absent)
       set_fact:
         inventaire_txt: "{{ lookup('file', inventaire_path, errors='ignore') | default('') }}"
@@ -61,9 +58,7 @@
       vars:
         ansible_connection: local
 
-  ###################################################################
-  # 1) Département
-  ###################################################################
+    # 1) Lire le département
     - name: Lire le département
       ansible.windows.win_shell: Get-Content -Path 'C:\\departement.txt'
       register: departement_raw
@@ -75,37 +70,24 @@
         msg: "Département « {{ departement }} » non reconnu"
       when: departement not in prefix_map
 
-  ###################################################################
-  # 2) Calcul du prochain hostname
-  ###################################################################
+    # 2) Calcul du nom d'hôte unique
     - name: Lignes déjà présentes
       set_fact:
-        inventaire_hostnames: "{{ hostvars['localhost'].inventaire_txt.splitlines()
-                                  | reject('match', '^\\s*\\[.*\\]')
-                                  | reject('equalto', '')
-                                  | list }}"
+        inventaire_hostnames: "{{ hostvars['localhost'].inventaire_txt.splitlines() | reject('match', '^\\s*\\[.*\\]') | reject('equalto', '') | list }}"
 
     - name: Noms du même département
       set_fact:
-        existants_dep: "{{ inventaire_hostnames
-                          | map('regex_replace', '\\..*$', '')
-                          | select('match', '^' ~ prefix_map[departement] ~ '-\\d{3}$')
-                          | list }}"
+        existants_dep: "{{ inventaire_hostnames | map('regex_replace', '\\..*$', '') | select('match', '^' ~ prefix_map[departement] ~ '-\\d{3}$') | list }}"
 
     - name: IDs déjà pris
       set_fact:
-        existants_ids: "{{ existants_dep
-                          | map('regex_replace', '^.*-(\\d{3})$', '\\1')
-                          | map('int')
-                          | list }}"
+        existants_ids: "{{ existants_dep | map('regex_replace', '^.*-(\\d{3})$', '\\1') | map('int') | list }}"
 
-    # 1️⃣ compute the number only
-    - name: Compute next_id
+    - name: Calculer l'ID suivant
       set_fact:
         next_id: "{{ '%03d' % ((range(1, 1000) | difference(existants_ids)) | min) }}"
-    
-    # 2️⃣ build the derived strings that depend on it
-    - name: Build new host identifiers
+
+    - name: Générer le nom et FQDN
       set_fact:
         new_hostname: "{{ prefix_map[departement] }}-{{ next_id }}"
         new_fqdn: "{{ prefix_map[departement] }}-{{ next_id }}{{ fqdn_suffix }}"
@@ -113,9 +95,7 @@
     - debug:
         msg: "→ Nouveau nom : {{ new_hostname }}"
 
-  ###################################################################
-  # 3) Renommer + reboot
-  ###################################################################
+    # 3) Renommage + reboot si nécessaire
     - name: Appliquer le nouveau nom
       ansible.windows.win_hostname:
         name: "{{ new_hostname }}"
@@ -125,10 +105,8 @@
       ansible.windows.win_reboot:
       when: rename_result.changed
 
-  ###################################################################
-  # 4) Installation des logiciels
-  ###################################################################
-    - name: Liste des paquets à installer
+    # 4) Installer les logiciels
+    - name: Liste des logiciels à installer
       set_fact:
         sw_list: "{{ software_map.get(departement, []) }}"
 
@@ -136,17 +114,15 @@
       win_chocolatey:
         name: chocolatey
 
-    - name: Installer les paquets
+    - name: Installer les logiciels via Chocolatey
       win_chocolatey:
         name: "{{ item }}"
         state: present
       loop: "{{ sw_list }}"
       when: sw_list | length > 0
 
-  ###################################################################
-  # 5) Mise à jour de l'inventaire
-  ###################################################################
-    - name: S’assurer de la section [ad_computers]
+    # 5) Mettre à jour l'inventaire
+    - name: S'assurer de la section [ad_computers]
       lineinfile:
         path: "{{ inventaire_path }}"
         line: "[ad_computers]"
@@ -171,21 +147,22 @@
         msg: "Inventaire mis à jour avec {{ new_fqdn }}"
       when: new_fqdn not in inventaire_hostnames
       run_once: true
-      
-    - name: Définir l'OU cible pour ce département
-      set_fact:
-        target_ou: "OU={{ departement }},OU=Bureau Computers,OU=Bureau,DC=fonteynethekitchen,DC=local"
-    
-    - name: Joindre le domaine dans l'OU spécifique
+
+    # 6) Joindre le domaine (OU par défaut) + reboot obligatoire
+    - name: Joindre le domaine (sans OU spécifique)
       win_domain_membership:
         dns_domain_name: "fonteynethekitchen.local"
         domain_admin_user: "{{ ldap_user }}"
         domain_admin_password: "{{ ldap_password }}"
-        domain_ou_path: "{{ target_ou }}"
         hostname: "{{ ansible_hostname }}"
-        state: "domain"
+        state: domain
       register: domain_join
-    
+
     - name: Redémarrer si nécessaire (join domaine)
       win_reboot:
       when: domain_join.reboot_required
+
+    - name: Redémarrage final forcé pour déconnecter l'utilisateur local
+      win_reboot:
+        msg: "Redémarrage final pour basculer sur le domaine"
+        reboot_timeout: 600
