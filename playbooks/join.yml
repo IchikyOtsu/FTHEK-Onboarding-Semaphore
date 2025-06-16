@@ -1,4 +1,4 @@
-- name: Joindre un poste Windows au domaine dans une OU spécifique
+- name: Joindre un poste Windows au domaine (sans OU spécifique)
   hosts: onboarding
   gather_facts: yes
 
@@ -11,17 +11,13 @@
       set_fact:
         departement: "{{ departement_raw.stdout | trim }}"
 
-    - name: Construire le chemin LDAP de l’OU cible
-      set_fact:
-        target_ou: "OU={{ departement }},OU=Bureau Computers,OU=Bureau,OU=FTK Forest,OU=Fonteyne The Kitchen,{{ ldap_base }}"
+    # ❌ Supprimé : construction du chemin OU
 
-
-    - name: Joindre la machine au domaine dans l’OU correspondante
+    - name: Joindre la machine au domaine (dans l’OU par défaut)
       ansible.windows.win_domain_membership:
         dns_domain_name: fonteynethekitchen.local
         domain_admin_user: "{{ ldap_user }}"
         domain_admin_password: "{{ ldap_password }}"
-        domain_ou_path: "{{ target_ou }}"
         hostname: "{{ ansible_hostname }}"
         state: domain
       register: domain_join
@@ -32,4 +28,4 @@
 
     - name: Afficher un résumé clair
       debug:
-        msg: "✅ Machine jointe à {{ domain_join.domain }} dans {{ target_ou }}"
+        msg: "✅ Machine jointe à {{ domain_join.domain }} (OU par défaut)"
