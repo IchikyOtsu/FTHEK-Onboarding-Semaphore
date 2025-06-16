@@ -13,7 +13,8 @@
 
     - name: Construire le chemin LDAP de l’OU cible
       set_fact:
-        target_ou: "OU={{ departement }},OU=Bureau Users,OU=Bureau,{{ ldap_base }}"
+        target_ou: "OU={{ departement }},OU=Bureau Computers,OU=Bureau,OU=FTK Forest,OU=Fonteyne The Kitchen,{{ ldap_base }}"
+
 
     - name: Joindre la machine au domaine dans l’OU correspondante
       ansible.windows.win_domain_membership:
