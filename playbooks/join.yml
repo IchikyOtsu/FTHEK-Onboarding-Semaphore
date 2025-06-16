@@ -26,4 +26,4 @@
 
     - name: Afficher un résumé clair
       debug:
-        msg: "✅ Machine jointe à {{ domain_join.domain }} (OU par défaut)"
+        msg: "✅ Machine jointe au domaine fonteynethekitchen.local avec le nom {{ ansible_hostname }}"
